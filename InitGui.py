@@ -5,8 +5,8 @@ class MachinekitWorkbench(Workbench):
 	ToolTip = "Workbench to interact with machinkit controlling a CNC"
 	
 	def Initialize(self):
-		#import Commands
-		#self.appendToolbar("TemplateTools",["TemplatePyMod_Cmd1","TemplatePyMod_Cmd2","TemplatePyMod_Cmd3","TemplatePyMod_Cmd4","TemplatePyMod_Cmd5"])
+		import Commands
+		self.appendToolbar("MachinekitTools",["MachinekitStartCmd"])
 		#menu = ["ModulePy &Commands","PyModuleCommands"]
 		#list = ["TemplatePyMod_Cmd1","TemplatePyMod_Cmd2","TemplatePyMod_Cmd3","TemplatePyMod_Cmd5","TemplatePyMod_Cmd6"]
 		#self.appendCommandbar("PyModuleCommands",list)
