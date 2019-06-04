@@ -4,11 +4,14 @@ import machinekit
 
 from PySide import QtCore, QtGui
 
+Dock = None
+
 class MachinekitCommand(object):
     def __init__(self, services):
         self.services = services
 
     def Activated(self):
+        global Dock
         dock = None
         instances = machinekit.Instances(self.serviceNames())
         if 0 == len(instances):
@@ -16,10 +19,17 @@ class MachinekitCommand(object):
         if 1 == len(instances):
             dock = self.activate(instances[0])
         if not dock is None:
+            for closebutton in [widget for widget in dock.ui.children() if widget.objectName().endswith('closebutton')]:
+                closebutton.clicked.connect(lambda : self.terminateDock(dock))
             FreeCADGui.getMainWindow().addDockWidget(QtCore.Qt.LeftDockWidgetArea, dock.ui)
+            Dock = dock
 
     def serviceNames(self):
         return self.services
+
+    def terminateDock(self, dock):
+        FreeCADGui.getMainWindow().removeDockWidget(dock.ui)
+        dock.ui.deleteLater()
 
 class MachinekitCommandJog(MachinekitCommand):
     def __init__(self):
