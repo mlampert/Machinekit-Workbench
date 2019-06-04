@@ -1,22 +1,25 @@
 class MachinekitWorkbench(Workbench):
-	"Test workbench object"
-	Icon = FreeCAD.getHomePath() + "Mod/Machinekit/Resources/machinekiticon.png"
-	MenuText = "Machinekit"
-	ToolTip = "Workbench to interact with machinkit controlling a CNC"
-	
-	def Initialize(self):
-		import Commands
-		self.appendToolbar("MachinekitTools",["MachinekitStartCmd"])
-		#menu = ["ModulePy &Commands","PyModuleCommands"]
-		#list = ["TemplatePyMod_Cmd1","TemplatePyMod_Cmd2","TemplatePyMod_Cmd3","TemplatePyMod_Cmd5","TemplatePyMod_Cmd6"]
-		#self.appendCommandbar("PyModuleCommands",list)
-		#self.appendMenu(menu,list)
-		pass
+    "Test workbench object"
+    import machinekit
+    Icon = machinekit.FileResource('machinekiticon.png')
+    MenuText = "Machinekit"
+    ToolTip = "Workbench to interact with machinkit controlling a CNC"
 
-	def Activated(self):
-	    pass
-	def Deactivated(self):
-	    pass
+    def Initialize(self):
+        import MachinekitCommands
+        self.appendToolbar(MachinekitCommands.ToolbarName, MachinekitCommands.ToolbarTools)
+        #menu = ["ModulePy &Commands","PyModuleCommands"]
+        #list = ["TemplatePyMod_Cmd1","TemplatePyMod_Cmd2","TemplatePyMod_Cmd3","TemplatePyMod_Cmd5","TemplatePyMod_Cmd6"]
+        #self.appendCommandbar("PyModuleCommands",list)
+        #self.appendMenu(menu,list)
+        pass
 
+    def Activated(self):
+        import MachinekitCommands
+        MachinekitCommands.Activated()
+
+    def Deactivated(self):
+        import MachinekitCommands
+        MachinekitCommands.Deactivated()
 
 Gui.addWorkbench(MachinekitWorkbench)
