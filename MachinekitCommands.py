@@ -19,10 +19,10 @@ class MachinekitCommand(object):
         if 1 == len(instances):
             dock = self.activate(instances[0])
         if not dock is None:
+            Dock = dock
             for closebutton in [widget for widget in dock.ui.children() if widget.objectName().endswith('closebutton')]:
                 closebutton.clicked.connect(lambda : self.terminateDock(dock))
             FreeCADGui.getMainWindow().addDockWidget(QtCore.Qt.LeftDockWidgetArea, dock.ui)
-            Dock = dock
 
     def serviceNames(self):
         return self.services
@@ -41,12 +41,26 @@ class MachinekitCommandJog(MachinekitCommand):
     def GetResources(self):
         return {
                 'Pixmap'    : machinekit.FileResource('machinekiticon.png'),
-                'MenuText'  : 'Start',
-                'ToolTip'   : 'Start machinekit integration and create objects for each discovered instance'
+                'MenuText'  : 'Jog',
+                'ToolTip'   : 'Jog and DRO interface for machine setup'
+                }
+
+class MachinekitCommandExecute(MachinekitCommand):
+    def __init__(self):
+        super(self.__class__, self).__init__(['command', 'status', 'task', 'error'])
+
+    def activate(self, instance):
+        return machinekit.Execute(instance)
+
+    def GetResources(self):
+        return {
+                'Pixmap'    : machinekit.FileResource('machinekiticon.png'),
+                'MenuText'  : 'Execute',
+                'ToolTip'   : 'Interface for controlling file execution'
                 }
 
 ToolbarName = 'MachinekitTools'
-ToolbarTools = ['MachinekitCommandJog']
+ToolbarTools = ['MachinekitCommandJog', 'MachinekitCommandExecute']
 
 def Activated():
     pass
@@ -55,3 +69,5 @@ def Deactivated():
     pass
 
 FreeCADGui.addCommand('MachinekitCommandJog', MachinekitCommandJog())
+FreeCADGui.addCommand('MachinekitCommandExecute', MachinekitCommandExecute())
+
