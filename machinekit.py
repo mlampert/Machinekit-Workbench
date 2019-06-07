@@ -1,8 +1,6 @@
 import FreeCAD
 import FreeCADGui
 import os
-import resizeablewidget
-from resizeablewidget import ResizeableWidget
 
 from PySide import QtCore, QtGui
 
@@ -62,11 +60,28 @@ class Jog(object):
     def setAxes(self, axes):
         print('set', axes)
 
+class TreeSelectionObserver(object):
+    def __init__(self, notify):
+        self.notify = notify
+        self.job = None
+
+    def addSelection(self, doc, obj, sub, pnt):
+        self.notify()
+
+    def removeSelection(self, doc, obj, sub):
+        self.notify()
+
+    def setSelection(self, doc, something=None):
+        self.notify()
+
+    def clearSelection(self, doc):
+        self.notify()
 
 class Execute(object):
     def __init__(self, mk):
         self.mk = mk
         self.ui = FreeCADGui.PySideUic.loadUi(FileResource('execute.ui'), self)
+        self.job = None
 
         #self.ui.dockWidgetContents.resized.connect(self.resized)
 
@@ -79,5 +94,23 @@ class Execute(object):
         rect = self.ui.geometry()
         self.ui.resize(rect.width(), 0)
 
+        self.observer = TreeSelectionObserver(self.objectSelectionChanged)
+        FreeCADGui.Selection.addObserver(self.observer)
+        self.objectSelectionChanged()
+
     def resized(self):
         print('resized')
+
+    def objectSelectionChanged(self):
+        jobs = [sel.Object for sel in FreeCADGui.Selection.getSelectionEx() if sel.Object.Name.startswith('Job')]
+        if len(jobs) == 1 and jobs[0] != self.job:
+            self.job = jobs[0]
+        else:
+            self.job = None
+
+        if self.job is None:
+            self.ui.run.setEnabled(False)
+            self.ui.step.setEnabled(False)
+        else:
+            self.ui.run.setEnabled(True)
+            self.ui.step.setEnabled(True)
