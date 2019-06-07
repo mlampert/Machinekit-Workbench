@@ -28,6 +28,7 @@ class MachinekitCommand(object):
         return self.services
 
     def terminateDock(self, dock):
+        dock.terminate()
         FreeCADGui.getMainWindow().removeDockWidget(dock.ui)
         dock.ui.deleteLater()
 

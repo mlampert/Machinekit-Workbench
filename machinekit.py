@@ -54,6 +54,9 @@ class Jog(object):
         setupSetButton(self.ui.setZ0,     'z',                    0, buttonWidth)
         setupSetButton(self.ui.setXYZ0, 'xyz',                    0, buttonWidth)
 
+    def terminate(self):
+        pass
+
     def jogAxes(self, axes):
         print('jog:', axes)
 
@@ -77,10 +80,49 @@ class TreeSelectionObserver(object):
     def clearSelection(self, doc):
         self.notify()
 
+class EventFilter(QtCore.QObject):
+    def eventFilter(self, obj, event):
+        if event.type() == QtCore.QChildEvent.Resize:
+            print(event.type(), event.size())
+        return QtCore.QObject.eventFilter(self, obj, event)
+
 class Execute(object):
     def __init__(self, mk):
         self.mk = mk
         self.ui = FreeCADGui.PySideUic.loadUi(FileResource('execute.ui'), self)
+        if True:
+            tb = QtGui.QWidget()
+            lo = QtGui.QHBoxLayout()
+            tb.setLayout(lo)
+            tb.setContentsMargins(0, 0, 0, 0)
+            self.title = QtGui.QLabel()
+            self.title.setText('hugo')
+            self.title.setContentsMargins(0, 0, 0, 0)
+            lo.addWidget(self.title)
+            spacer = QtGui.QSpacerItem(0,0,QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Minimum)
+            lo.addItem(spacer)
+            self.ob = QtGui.QPushButton()
+            self.ob.setFlat(True)
+            self.ob.setIcon(QtGui.QApplication.style().standardIcon(QtGui.QStyle.SP_ToolBarVerticalExtensionButton))
+            self.ob.clicked.connect(self.toggleOrientation)
+            self.oi = 'v'
+            bs = None
+            lo.addWidget(self.ob)
+            for b in self.ui.findChildren(QtGui.QAbstractButton):
+                if 'qt_dockwidget' in b.objectName():
+                    bt = QtGui.QPushButton()
+                    bt.setIcon(b.icon())
+                    print(b.icon().name())
+                    bs = b.icon().availableSizes()[-1] + QtCore.QSize(3,3)
+                    bt.setMaximumSize(bs)
+                    bt.setFlat(True)
+                    bt.clicked.connect(b.click)
+                    lo.addWidget(bt)
+            if bs:
+                self.ob.setMaximumSize(bs)
+            lo.setSpacing(0)
+            lo.setContentsMargins(0, 0, 0, 0)
+            self.ui.setTitleBarWidget(tb)
         self.job = None
 
         #self.ui.dockWidgetContents.resized.connect(self.resized)
@@ -98,6 +140,12 @@ class Execute(object):
         FreeCADGui.Selection.addObserver(self.observer)
         self.objectSelectionChanged()
 
+        #self.eventFilter = EventFilter()
+        #self.ui.installEventFilter(self.eventFilter)
+
+    def terminate(self):
+        FreeCADGui.Selection.removeObserver(self.observer)
+
     def resized(self):
         print('resized')
 
@@ -114,3 +162,13 @@ class Execute(object):
         else:
             self.ui.run.setEnabled(True)
             self.ui.step.setEnabled(True)
+
+    def toggleOrientation(self):
+        if 'v' == self.oi:
+            self.ui.execute.layout().setDirection(QtGui.QBoxLayout.TopToBottom)
+            self.ob.setIcon(QtGui.QApplication.style().standardIcon(QtGui.QStyle.SP_ToolBarHorizontalExtensionButton))
+            self.oi = 'h'
+        else:
+            self.ui.execute.layout().setDirection(QtGui.QBoxLayout.LeftToRight)
+            self.ob.setIcon(QtGui.QApplication.style().standardIcon(QtGui.QStyle.SP_ToolBarVerticalExtensionButton))
+            self.oi = 'v'
