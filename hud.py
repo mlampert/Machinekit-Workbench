@@ -3,72 +3,103 @@
 
 import FreeCAD as App
 import FreeCADGui as Gui
+import math
 import random
 
 from pivy import coin
 
-fsze = 33
-
-doc = App.newDocument()
-view = Gui.ActiveDocument.ActiveView
-
-size = view.getSize()
-ypos = 1 - (2 / size[1]) * fsze
-xpos = -0.98 # there's probably a smarter way, but it seems to be OK
-
-
-sep = coin.SoSeparator()
-
-cam = coin.SoOrthographicCamera()
-cam.aspectRatio = 1
-cam.viewportMapping = coin.SoCamera.LEAVE_ALONE
-
-pos = coin.SoTranslation()
-pos.translation = (xpos, ypos, 0)
-
-mat = coin.SoMaterial()
-mat.diffuseColor = coin.SbColor(0.9, 0, 0.9)
-mat.transparency = 0
-
-fnt = coin.SoFont()
-fnt.size = fsze
-fnt.name = 'mono'
-
-txt = coin.SoText2()
-txt.string = 'setValues'
-txt.justification = coin.SoText2.LEFT
-
-sep.addChild(cam)
-sep.addChild(pos)
-sep.addChild(mat)
-sep.addChild(fnt)
-sep.addChild(txt)
+def axisFmt(axis, val):
+    return "%s: %8.3f" % (axis, val)
 
 def randf():
     return random.randint(-1000000, 1000000) / 1000.0
 
-def axisFmt(axis, val):
-    return "%s: %8.3f" % (axis, val)
+class HUD(object):
+    def __init__(self, view=Gui.ActiveDocument.ActiveView, fontSize=33, coneHeight=100):
+        self.view = view
+        self.fsze = fontSize
+        self.tsze = coneHeight
 
-def setValues(x=None, y=None, z=None):
-    if x is None:
-        x = randf()
-    if y is None:
-        y = randf()
-    if z is None:
-        z = randf()
+        size = view.getSize()
+        ypos = 1 - (2 / size[1]) * self.fsze
+        xpos = -0.98 # there's probably a smarter way, but it seems to be OK
 
-    txt.string.setValues([axisFmt('X', x), axisFmt('Y', y), axisFmt('Z', z)])
+        self.cam = coin.SoOrthographicCamera()
+        self.cam.aspectRatio = 1
+        self.cam.viewportMapping = coin.SoCamera.LEAVE_ALONE
 
-setValues()
+        self.pos = coin.SoTranslation()
+        self.pos.translation = (xpos, ypos, 0)
 
-viewer = view.getViewer()
-render = viewer.getSoRenderManager()
-sup = render.addSuperimposition(sep)
+        self.mat = coin.SoMaterial()
+        self.mat.diffuseColor = coin.SbColor(0.9, 0, 0.9)
+        self.mat.transparency = 0
 
-sg=Gui.ActiveDocument.ActiveView.getSceneGraph()
-sg.touch()
+        self.fnt = coin.SoFont()
+        self.fnt.size = self.fsze
+        self.fnt.name = 'mono'
 
-##### remove the layer
-#render.removeSuperimposition(sup)
-#sg.touch()
+        self.txt = coin.SoText2()
+        self.txt.string = 'setValues'
+        self.txt.justification = coin.SoText2.LEFT
+
+        self.sep = coin.SoSeparator()
+
+        self.sep.addChild(self.cam)
+        self.sep.addChild(self.pos)
+        self.sep.addChild(self.mat)
+        self.sep.addChild(self.fnt)
+        self.sep.addChild(self.txt)
+
+        self.tTrf = coin.SoTransform()
+        self.tTrf.translation.setValue((0,-self.tsze/2,0))
+        self.tTrf.center.setValue((0,self.tsze/2,0))
+        self.tTrf.rotation.setValue(coin.SbVec3f((1,0,0)), -math.pi/2)
+
+        self.tPos = coin.SoTranslation()
+        self.tPos.translation = (xpos, ypos, 0)
+
+        self.tMat = coin.SoMaterial()
+        self.tMat.diffuseColor = coin.SbColor(0.9, 0, 0.9)
+        self.tMat.transparency = 0.8
+
+        self.tool = coin.SoCone()
+        self.tool.height.setValue(self.tsze)
+        self.tool.bottomRadius.setValue(self.tsze/4)
+
+        self.tSep = coin.SoSeparator()
+        self.tSep.addChild(self.tPos)
+        self.tSep.addChild(self.tTrf)
+        self.tSep.addChild(self.tMat)
+        self.tSep.addChild(self.tool)
+
+        self.viewer = self.view.getViewer()
+        self.render = self.viewer.getSoRenderManager()
+        self.sup = None
+
+        self.setValues()
+
+    def setPos(self, x, y, z):
+        self.txt.string.setValues([axisFmt('X', x), axisFmt('Y', y), axisFmt('Z', z)])
+        self.tPos.translation = (x, y, z)
+
+    def show(self):
+        self.sup = self.render.addSuperimposition(self.sep)
+        self.view.getSceneGraph().addChild(self.tSep)
+        self.view.getSceneGraph().touch()
+
+    def hide(self):
+        if self.sup:
+            self.render.removeSuperimposition(self.sup)
+            self.sup = None
+            self.view.getSceneGraph().removeChild(self.tSep)
+            self.view.getSceneGraph().touch()
+
+    def setValues(self, x=None, y=None, z=None):
+        if x is None:
+            x = randf()
+        if y is None:
+            y = randf()
+        if z is None:
+            z = randf()
+        self.setPos(x, y, z)
