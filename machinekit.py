@@ -1,11 +1,96 @@
 import FreeCAD
 import FreeCADGui
+import PySide.QtCore
+import PySide.QtGui
 import os
+import threading
+import zeroconf
+import zmq
 
-from PySide import QtCore, QtGui
+class Endpoint(object):
+    def __init__(self, service, name, dsn, uuid):
+        self.service = service
+        self.name = name
+        self.dsn = dsn
+        self.uuid = uuid
+
+class Machinekit(object):
+    def __init__(self, uuid):
+        self.uuid = uuid
+        self.endpoint = {}
+        self.lock = threading.Lock()
+
+    def addService(self, properties, name):
+        service = properties[b'service']
+        dsn = properties[b'dsn']
+        uuid = properties[b'instance']
+        with self.lock:
+            self.endpoint[service.decode()] = Endpoint(service, name, dsn, uuid)
+
+    def removeService(self, name):
+        with self.lock:
+            for epn in self.endpoint:
+                ep = self.endpoint[epn]
+                if ep.name == name:
+                    del self.endpoint[epn]
+                    break
+
+    def has(self, services):
+        candidates = [s for s in [self.endpoint.get(v) for v in services]]
+        return all([self.endpoint.get(s) for s in services])
+
+    def __str__(self):
+        with self.lock:
+            return "MK(%s): %s" % (self.uuid.decode(), sorted([self.endpoint[ep].service.decode() for ep in self.endpoint]))
+
+class ServiceMonitor(object):
+    def __init__(self):
+        self.zc = zeroconf.Zeroconf()
+        self.quit = False
+        self.browser = zeroconf.ServiceBrowser(self.zc, "_machinekit._tcp.local.", self)
+        self.machinekit = {}
+
+    # zeroconf.ServiceBrowser interface
+    def remove_service(self, zc, typ, name):
+        for mkn in self.machinekit:
+            mk = self.machinekit[mkn]
+            mk.removeService(name)
+
+    def add_service(self, zc, typ, name):
+        info = zc.get_service_info(typ, name)
+        if info.properties.get(b'service'):
+            uuid = info.properties[b'uuid']
+            mk = self.machinekit.get(uuid)
+            if not mk:
+                mk = Machinekit(uuid)
+                self.machinekit[uuid] = mk
+            mk.addService(info.properties, info.name)
+            print(mk)
+
+    def run(self):
+        while not self.quit:
+            time.sleep(0.1)
+        self.browser.done = True
+
+    def printAll(self):
+        for mk in self.machinekit:
+            print(self.machinekit[mk].toString())
+
+    def instances(self, services):
+        potentials = []
+        for mkn in self.machinekit:
+            mk = self.machinekit[mkn]
+            if mk.has(services):
+                potentials.append(mk)
+            else:
+                print("\ninstance(%s): %s\n" % (services, self.printAll()))
+        print('potentials=%s vs. services=%s (%s)' % (potentials, services, self.machinekit))
+        return potentials
+
+_ServiceMonitor = ServiceMonitor()
 
 def Instances(services):
-    return [1]
+    return _ServiceMonitor.instances(services)
 
 def PathSource():
     return os.path.dirname(__file__)
@@ -14,7 +99,7 @@ def FileResource(filename):
     return "%s/Resources/%s" % (PathSource(), filename)
 
 def IconResource(filename):
-    return QtGui.QIcon(FileResource(filename))
+    return PySide.QtGui.QIcon(FileResource(filename))
 
 
 class Jog(object):
@@ -80,40 +165,40 @@ class TreeSelectionObserver(object):
     def clearSelection(self, doc):
         self.notify()
 
-class EventFilter(QtCore.QObject):
+class EventFilter(PySide.QtCore.QObject):
     def eventFilter(self, obj, event):
-        if event.type() == QtCore.QChildEvent.Resize:
+        if event.type() == PySide.QtCore.QChildEvent.Resize:
             print(event.type(), event.size())
-        return QtCore.QObject.eventFilter(self, obj, event)
+        return PySide.QtCore.QObject.eventFilter(self, obj, event)
 
 class Execute(object):
     def __init__(self, mk):
         self.mk = mk
         self.ui = FreeCADGui.PySideUic.loadUi(FileResource('execute.ui'), self)
         if True:
-            tb = QtGui.QWidget()
-            lo = QtGui.QHBoxLayout()
+            tb = PySide.QtGui.QWidget()
+            lo = PySide.QtGui.QHBoxLayout()
             tb.setLayout(lo)
             tb.setContentsMargins(0, 0, 0, 0)
-            self.title = QtGui.QLabel()
+            self.title = PySide.QtGui.QLabel()
             self.title.setText('hugo')
             self.title.setContentsMargins(0, 0, 0, 0)
             lo.addWidget(self.title)
-            spacer = QtGui.QSpacerItem(0,0,QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Minimum)
+            spacer = PySide.QtGui.QSpacerItem(0,0,PySide.QtGui.QSizePolicy.Expanding, PySide.QtGui.QSizePolicy.Minimum)
             lo.addItem(spacer)
-            self.ob = QtGui.QPushButton()
+            self.ob = PySide.QtGui.QPushButton()
             self.ob.setFlat(True)
-            self.ob.setIcon(QtGui.QApplication.style().standardIcon(QtGui.QStyle.SP_ToolBarVerticalExtensionButton))
+            self.ob.setIcon(PySide.QtGui.QApplication.style().standardIcon(PySide.QtGui.QStyle.SP_ToolBarVerticalExtensionButton))
             self.ob.clicked.connect(self.toggleOrientation)
             self.oi = 'v'
             bs = None
             lo.addWidget(self.ob)
-            for b in self.ui.findChildren(QtGui.QAbstractButton):
+            for b in self.ui.findChildren(PySide.QtGui.QAbstractButton):
                 if 'qt_dockwidget' in b.objectName():
-                    bt = QtGui.QPushButton()
+                    bt = PySide.QtGui.QPushButton()
                     bt.setIcon(b.icon())
                     print(b.icon().name())
-                    bs = b.icon().availableSizes()[-1] + QtCore.QSize(3,3)
+                    bs = b.icon().availableSizes()[-1] + PySide.QtCore.QSize(3,3)
                     bt.setMaximumSize(bs)
                     bt.setFlat(True)
                     bt.clicked.connect(b.click)
@@ -131,6 +216,7 @@ class Execute(object):
         self.ui.step.clicked.connect(lambda : self.ui.status.setText('step'))
         self.ui.pause.clicked.connect(lambda p: self.ui.status.setText("pause: %s" % p))
         self.ui.stop.clicked.connect(lambda : self.ui.status.setText('stop'))
+        self.ui.run.clicked.connect(lambda : _ServiceMonitor.printAll())
 
         self.ui.status.setText('')
         rect = self.ui.geometry()
@@ -165,10 +251,10 @@ class Execute(object):
 
     def toggleOrientation(self):
         if 'v' == self.oi:
-            self.ui.execute.layout().setDirection(QtGui.QBoxLayout.TopToBottom)
-            self.ob.setIcon(QtGui.QApplication.style().standardIcon(QtGui.QStyle.SP_ToolBarHorizontalExtensionButton))
+            self.ui.execute.layout().setDirection(PySide.QtGui.QBoxLayout.TopToBottom)
+            self.ob.setIcon(PySide.QtGui.QApplication.style().standardIcon(PySide.QtGui.QStyle.SP_ToolBarHorizontalExtensionButton))
             self.oi = 'h'
         else:
-            self.ui.execute.layout().setDirection(QtGui.QBoxLayout.LeftToRight)
-            self.ob.setIcon(QtGui.QApplication.style().standardIcon(QtGui.QStyle.SP_ToolBarVerticalExtensionButton))
+            self.ui.execute.layout().setDirection(PySide.QtGui.QBoxLayout.LeftToRight)
+            self.ob.setIcon(PySide.QtGui.QApplication.style().standardIcon(PySide.QtGui.QStyle.SP_ToolBarVerticalExtensionButton))
             self.oi = 'v'
