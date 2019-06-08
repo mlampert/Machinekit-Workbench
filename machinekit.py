@@ -1,47 +1,124 @@
 import FreeCAD
 import FreeCADGui
+import MKServiceCommand
+import MKServiceError
+import MKServiceStatus
 import PySide.QtCore
 import PySide.QtGui
+import machinetalk.protobuf.message_pb2 as MESSAGE
+import machinetalk.protobuf.types_pb2 as TYPES
 import os
 import threading
 import zeroconf
 import zmq
 
+MKServiceRegister = {
+        'command' : MKServiceCommand.MKServiceCommand,
+        'error'   : MKServiceError.MKServiceError,
+        'status'  : MKServiceStatus.MKServiceStatus,
+        '': None
+        }
+
 class Endpoint(object):
-    def __init__(self, service, name, dsn, uuid):
+    def __init__(self, service, name, properties):
         self.service = service
         self.name = name
-        self.dsn = dsn
-        self.uuid = uuid
+        self.properties = properties
+        self.dsn = properties[b'dsn']
+        self.uuid = properties[b'instance']
 
 class Machinekit(object):
-    def __init__(self, uuid):
+    def __init__(self, uuid, properties):
         self.uuid = uuid
+        self.properties = properties
         self.endpoint = {}
         self.lock = threading.Lock()
+        self.service = {}
+        # setup zmq
+        self.context = zmq.Context()
+        self.poller = zmq.Poller()
+        self.quit = False
+        self.timeout = 100
+        self.thread = None
 
     def addService(self, properties, name):
         service = properties[b'service']
-        dsn = properties[b'dsn']
-        uuid = properties[b'instance']
         with self.lock:
-            self.endpoint[service.decode()] = Endpoint(service, name, dsn, uuid)
+            self.endpoint[service.decode()] = Endpoint(service, name, properties)
+            self.quit = False
+            if self.thread is None:
+                self.thread = threading.Thread(target=self.run)
+                self.thread.start()
 
     def removeService(self, name):
         with self.lock:
-            for epn in self.endpoint:
-                ep = self.endpoint[epn]
+            for epn, ep in self.endpoint.items():
                 if ep.name == name:
                     del self.endpoint[epn]
                     break
+            if 0 == len(self.endpoint):
+                self.quit = True
+        if not self.thread is None:
+            self.thread.join
 
-    def has(self, services):
+    def providesServices(self, services):
         candidates = [s for s in [self.endpoint.get(v) for v in services]]
         return all([self.endpoint.get(s) for s in services])
 
     def __str__(self):
         with self.lock:
-            return "MK(%s): %s" % (self.uuid.decode(), sorted([self.endpoint[ep].service.decode() for ep in self.endpoint]))
+            return "MK(%s): %s" % (self.uuid.decode(), sorted([ep.service.decode() for epn, ep in self.endpoint.items()]))
+
+    def connectServices(self, services):
+        mkServices = []
+        for s in services:
+            with self.lock:
+                if not self.service.get(s):
+                    cls = MKServiceRegister.get(s)
+                    if cls is None:
+                        print("Error: service %s not supported" % s)
+                    else:
+                        mk = self.endpoint.get(s)
+                        if mk is None:
+                            print("Error: no endpoint for %s" % s)
+                        else:
+                            service = cls(self.context, s, mk.properties)
+                            self.service[s] = service
+                            self.poller.register(service.socket, zmq.POLLIN)
+                            mkServices.append(service)
+                else:
+                    mkServices.append(self.service[s])
+        return mkServices
+
+    def run(self):
+        print('thread start')
+        while not self.quit:
+            s = dict(self.poller.poll(self.timeout))
+            if s:
+                with self.lock:
+                    for name, service in self.service.items():
+                        if service.socket in s:
+                            #print('+', name)
+                            msg = None
+                            rsp = None
+                            rx = MESSAGE.Container()
+                            try:
+                                msg = service.receiveMessage()
+                                rx.ParseFromString(msg)
+                            except Exception as e:
+                                print("%s exception: %s" % (service.name, e))
+                                print("    msg = '%s'" % msg)
+                            else:
+                                # ignore all ping messages for now
+                                if rx.type == TYPES.MT_PING:
+                                    service.ping()
+                                else:
+                                    service.process(rx);
+                        else:
+                            #print('-', name)
+                            pass
+
+        print('thread stop')
 
 class ServiceMonitor(object):
     def __init__(self):
@@ -52,8 +129,7 @@ class ServiceMonitor(object):
 
     # zeroconf.ServiceBrowser interface
     def remove_service(self, zc, typ, name):
-        for mkn in self.machinekit:
-            mk = self.machinekit[mkn]
+        for mkn, mk in self.machinekit.items():
             mk.removeService(name)
 
     def add_service(self, zc, typ, name):
@@ -62,10 +138,10 @@ class ServiceMonitor(object):
             uuid = info.properties[b'uuid']
             mk = self.machinekit.get(uuid)
             if not mk:
-                mk = Machinekit(uuid)
+                mk = Machinekit(uuid, info.properties)
                 self.machinekit[uuid] = mk
             mk.addService(info.properties, info.name)
-            print(mk)
+            #print(mk)
 
     def run(self):
         while not self.quit:
@@ -73,19 +149,11 @@ class ServiceMonitor(object):
         self.browser.done = True
 
     def printAll(self):
-        for mk in self.machinekit:
-            print(self.machinekit[mk].toString())
+        for mkn, mk in self.machinekit.items():
+            print(mk)
 
     def instances(self, services):
-        potentials = []
-        for mkn in self.machinekit:
-            mk = self.machinekit[mkn]
-            if mk.has(services):
-                potentials.append(mk)
-            else:
-                print("\ninstance(%s): %s\n" % (services, self.printAll()))
-        print('potentials=%s vs. services=%s (%s)' % (potentials, services, self.machinekit))
-        return potentials
+        return [mk for mkn, mk in self.machinekit.items() if mk.providesServices(services)]
 
 _ServiceMonitor = ServiceMonitor()
 
@@ -101,11 +169,20 @@ def FileResource(filename):
 def IconResource(filename):
     return PySide.QtGui.QIcon(FileResource(filename))
 
+jog = None
 
 class Jog(object):
     def __init__(self, mk):
+        global jog
+        jog = self
         self.mk = mk
         self.ui = FreeCADGui.PySideUic.loadUi(FileResource('jog.ui'))
+
+        self.services = self.mk.connectServices(['command', 'status'])
+        for service in self.services:
+            if 'command' == service.name:
+                self.cmd = service
+            service.attach(self)
 
         def setupJogButton(b, axes, icon):
             b.clicked.connect(lambda : self.jogAxes(axes))
@@ -147,6 +224,33 @@ class Jog(object):
 
     def setAxes(self, axes):
         print('set', axes)
+
+    def isConnected(self, topics=None):
+        if topics is None:
+            topics = ['status.config', 'status.io', 'status.motion']
+
+        for topic in topics:
+            service = self[topic]
+            if service is None or not service.isValid():
+                return False
+        return not self.cmd is None
+
+    def __getitem__(self, index):
+        path = index.split('.')
+        for service in self.services:
+            if service.name == path[0]:
+                if len(path) > 1:
+                    return service[path[1:]]
+                return service
+        return None
+
+    def updateUI(self):
+        if self.isConnected():
+            self.ui.setWindowTitle(self['status.config.name'])
+
+    def changed(self, service, msg):
+        if service.topicName() == 'status.config':
+            self.updateUI()
 
 class TreeSelectionObserver(object):
     def __init__(self, notify):

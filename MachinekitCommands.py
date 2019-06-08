@@ -34,7 +34,7 @@ class MachinekitCommand(object):
 
 class MachinekitCommandJog(MachinekitCommand):
     def __init__(self):
-        super(self.__class__, self).__init__(['command', 'status', 'task', 'error'])
+        super(self.__class__, self).__init__(['command', 'status'])
 
     def activate(self, instance):
         return machinekit.Jog(instance)
@@ -48,7 +48,7 @@ class MachinekitCommandJog(MachinekitCommand):
 
 class MachinekitCommandExecute(MachinekitCommand):
     def __init__(self):
-        super(self.__class__, self).__init__(['command', 'status', 'task', 'error'])
+        super(self.__class__, self).__init__(['command', 'status'])
 
     def activate(self, instance):
         return machinekit.Execute(instance)
