@@ -16,6 +16,9 @@ class MKCommand(object):
         self.msg.type = command
         self.state = MKCommandStatus.Created
 
+    def __str__(self):
+        return self.__class__.__name__
+
     def expectsResponses(self):
         return True
 
@@ -100,6 +103,9 @@ class MKCommandAxisHome(MKCommand):
     def __init__(self, index, home=True):
         MKCommand.__init__(self, TYPES.MT_EMC_AXIS_HOME if home else TYPES.MT_EMC_AXIS_UNHOME)
         self.msg.emc_command_params.index = index
+
+    def __str__(self):
+        return "MKCommandAxisHome[%d]" % (self.msg.emc_command_params.index)
 
 class MKCommandTaskExecute(MKCommandExecute):
     def __init__(self, cmd):

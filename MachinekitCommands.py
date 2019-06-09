@@ -10,6 +10,9 @@ class MachinekitCommand(object):
     def __init__(self, services):
         self.services = services
 
+    def IsActive(self):
+        return len(machinekit.Instances()) > 0
+
     def Activated(self):
         global Dock
         dock = None
@@ -36,8 +39,8 @@ class MachinekitCommandJog(MachinekitCommand):
     def __init__(self):
         super(self.__class__, self).__init__(['command', 'status'])
 
-    def activate(self, instance):
-        return machinekit.Jog(instance)
+    def activate(self, mk):
+        return machinekit.Jog(mk)
 
     def GetResources(self):
         return {
@@ -50,8 +53,8 @@ class MachinekitCommandExecute(MachinekitCommand):
     def __init__(self):
         super(self.__class__, self).__init__(['command', 'status'])
 
-    def activate(self, instance):
-        return machinekit.Execute(instance)
+    def activate(self, mk):
+        return machinekit.Execute(mk)
 
     def GetResources(self):
         return {
@@ -60,8 +63,44 @@ class MachinekitCommandExecute(MachinekitCommand):
                 'ToolTip'   : 'Interface for controlling file execution'
                 }
 
-ToolbarName = 'MachinekitTools'
+
+class MachinekitCommandEstop(MachinekitCommand):
+    def __init__(self):
+        super(self.__class__, self).__init__(['command', 'status'])
+
+    def activate(self, mk):
+        machinekit.Estop(mk)
+
+    def GetResources(self):
+        return {
+                'Pixmap'    : machinekit.FileResource('machinekiticon.png'),
+                'MenuText'  : 'Power',
+                'ToolTip'   : 'Turn machinekit controller on/off'
+                }
+
+class MachinekitCommandHome(MachinekitCommand):
+    def __init__(self):
+        super(self.__class__, self).__init__(['command', 'status'])
+
+    def IsActive(self):
+        if super(self.__class__, self).IsActive():
+            mk = machinekit.Instances()[0]
+            return mk.isPowered() and not mk.isHomed()
+        return False
+
+    def activate(self, mk):
+        machinekit.Home(mk)
+
+    def GetResources(self):
+        return {
+                'Pixmap'    : machinekit.FileResource('machinekiticon.png'),
+                'MenuText'  : 'Home',
+                'ToolTip'   : 'Home all axes'
+                }
+
+ToolbarName  = 'MachinekitTools'
 ToolbarTools = ['MachinekitCommandJog', 'MachinekitCommandExecute']
+MenuList     = ["MachinekitCommandEstop", "MachinekitCommandHome", "Separator"] + ToolbarTools
 
 def Activated():
     pass
@@ -69,6 +108,8 @@ def Activated():
 def Deactivated():
     pass
 
-FreeCADGui.addCommand('MachinekitCommandJog', MachinekitCommandJog())
+FreeCADGui.addCommand('MachinekitCommandEstop',   MachinekitCommandEstop())
 FreeCADGui.addCommand('MachinekitCommandExecute', MachinekitCommandExecute())
+FreeCADGui.addCommand('MachinekitCommandHome',    MachinekitCommandHome())
+FreeCADGui.addCommand('MachinekitCommandJog',     MachinekitCommandJog())
 

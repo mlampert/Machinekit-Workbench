@@ -8,10 +8,8 @@ class MachinekitWorkbench(Workbench):
     def Initialize(self):
         import MachinekitCommands
         self.appendToolbar(MachinekitCommands.ToolbarName, MachinekitCommands.ToolbarTools)
-        #menu = ["ModulePy &Commands","PyModuleCommands"]
-        #list = ["TemplatePyMod_Cmd1","TemplatePyMod_Cmd2","TemplatePyMod_Cmd3","TemplatePyMod_Cmd5","TemplatePyMod_Cmd6"]
-        #self.appendCommandbar("PyModuleCommands",list)
-        #self.appendMenu(menu,list)
+        #self.appendCommandbar("MachinekitCommands", MachinekitCommands.MenuList)
+        self.appendMenu("Machinekit", MachinekitCommands.MenuList)
         pass
 
     def Activated(self):

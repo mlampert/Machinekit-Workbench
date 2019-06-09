@@ -9,6 +9,45 @@ import zmq
 from MKCommand import *
 from MKService import *
 
+class MKCommandPauseUntil(object):
+    def __init__(self, condition):
+        self.condition = condition
+
+    def resume(self):
+        return self.condition()
+
+class CommandSequence(object):
+    def __init__(self, service, sequence):
+        self.service = service
+        self.sequence = sequence
+        self.msgs = []
+        self.wait = None
+
+    def isActive(self):
+        return len(self.sequence) != 0 or len(self.msgs) != 0 or not self.wait is None
+
+    def start(self):
+        self.sendBatch()
+
+    def processCommand(self, msg):
+        if msg.isCompleted() and msg in self.msgs:
+            self.msgs.remove(msg)
+
+    def sendBatch(self):
+        if self.sequence:
+            batch = self.sequence.pop(0)
+            for command in batch:
+                if type(command) == MKCommandPauseUntil:
+                    self.wait = command
+                else:
+                    self.msgs.append(command)
+                    self.service.sendCommand(command)
+
+    def ping(self):
+        if not self.msgs and ((self.wait is None) or self.wait.resume()):
+            self.wait = None
+            self.sendBatch()
+
 class MKServiceCommand(MKService):
     def __init__(self, context, name, properties):
         MKService.__init__(self, name, properties)
@@ -20,6 +59,7 @@ class MKServiceCommand(MKService):
         self.locked = threading.Lock()
         self.outstandingMsgs = {}
         self.observers = []
+        self.compounds = []
 
     def attach(self, observer):
         if not observer in self.observers:
@@ -27,6 +67,9 @@ class MKServiceCommand(MKService):
 
     def detach(self, observer):
         self.observers = [o for o in self.observers if o != observer]
+
+    def topicName(self):
+        return 'command'
 
     def newTicket(self):
         with self.locked:
@@ -37,7 +80,7 @@ class MKServiceCommand(MKService):
         msg.msg.ticket = ticket
         buf = msg.serializeToString()
         self.outstandingMsgs[ticket] = msg
-        #print("add [%d]" % (ticket))
+        #print("add [%d]: %s" % (ticket, msg))
         msg.msgSent()
         self.socket.send(buf)
         if not msg.expectsResponses():
@@ -45,10 +88,15 @@ class MKServiceCommand(MKService):
             self.msgChanged(msg)
 
     def msgChanged(self, msg):
+        for compound in self.compounds:
+            compound.processCommand(msg)
+        self.compounds = [compound for compound in self.compounds if compound.isActive()]
+
         for observer in self.observers:
             observer.changed(self, msg)
-        if msg.isCompleted():
-            #print("del [%d]: " % (msg.msg.ticket, msg))
+
+        if msg.isCompleted() and self.outstandingMsgs.get(msg.msg.ticket):
+            #print("del [%d]: %s" % (msg.msg.ticket, msg))
             del self.outstandingMsgs[msg.msg.ticket]
 
     def process(self, container):
@@ -72,3 +120,20 @@ class MKServiceCommand(MKService):
                 print("process(%s) - unknown ticket" % container)
         else:
             print("process(%s)" % container)
+
+    def sendCommandSequence(self, sequence):
+        command = CommandSequence(self, sequence)
+        self.compounds.append(command)
+        command.start()
+
+    def sendCommands(self, commands):
+        if 1 == len(commands):
+            self.sendCommand(commands[0])
+        else:
+            self.sendCommandSequence([[command] for command in commands])
+
+    def ping(self):
+        for compound in self.compounds:
+            compound.ping()
+        self.compounds = [compound for compound in self.compounds if compound.isActive()]
+

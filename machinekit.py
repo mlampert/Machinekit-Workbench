@@ -1,21 +1,29 @@
 import FreeCAD
 import FreeCADGui
-import MKServiceCommand
-import MKServiceError
-import MKServiceStatus
 import PySide.QtCore
 import PySide.QtGui
 import machinetalk.protobuf.message_pb2 as MESSAGE
+import machinetalk.protobuf.status_pb2 as STATUS
 import machinetalk.protobuf.types_pb2 as TYPES
 import os
 import threading
 import zeroconf
 import zmq
 
+from MKCommand import *
+from MKServiceCommand import *
+from MKServiceError import *
+from MKServiceStatus import *
+
+AxesName = ['X', 'Y', 'Z', 'A', 'B', 'C', 'U', 'V', 'W']
+AxesForward = ['X', 'Y', 'Z', 'A', 'B', 'C', 'U', 'V', 'W']
+AxesBackward = ['x', 'y', 'z', 'a', 'b', 'c', 'u', 'v', 'w']
+
+
 MKServiceRegister = {
-        'command' : MKServiceCommand.MKServiceCommand,
-        'error'   : MKServiceError.MKServiceError,
-        'status'  : MKServiceStatus.MKServiceStatus,
+        'command' : MKServiceCommand,
+        'error'   : MKServiceError,
+        'status'  : MKServiceStatus,
         '': None
         }
 
@@ -41,16 +49,31 @@ class Machinekit(object):
         self.timeout = 100
         self.thread = None
 
-    def addService(self, properties, name):
+    def __str__(self):
+        with self.lock:
+            return "MK(%s): %s" % (self.uuid.decode(), sorted([ep.service.decode() for epn, ep in self.endpoint.items()]))
+
+    def __getitem__(self, index):
+        path = index.split('.')
+        service = self.service.get(path[0])
+        if service:
+            if len(path) > 1:
+                return service[path[1:]]
+            return service
+        return None
+
+    def _addService(self, properties, name):
         service = properties[b'service']
         with self.lock:
             self.endpoint[service.decode()] = Endpoint(service, name, properties)
             self.quit = False
             if self.thread is None:
-                self.thread = threading.Thread(target=self.run)
+                self.thread = threading.Thread(target=self._run)
                 self.thread.start()
+        if b'status' == service:
+            self.connectServices(['status'])
 
-    def removeService(self, name):
+    def _removeService(self, name):
         with self.lock:
             for epn, ep in self.endpoint.items():
                 if ep.name == name:
@@ -65,32 +88,28 @@ class Machinekit(object):
         candidates = [s for s in [self.endpoint.get(v) for v in services]]
         return all([self.endpoint.get(s) for s in services])
 
-    def __str__(self):
+    def connectWith(self, s):
         with self.lock:
-            return "MK(%s): %s" % (self.uuid.decode(), sorted([ep.service.decode() for epn, ep in self.endpoint.items()]))
+            if not self.service.get(s):
+                cls = MKServiceRegister.get(s)
+                if cls is None:
+                    print("Error: service %s not supported" % s)
+                else:
+                    mk = self.endpoint.get(s)
+                    if mk is None:
+                        print("Error: no endpoint for %s" % s)
+                    else:
+                        service = cls(self.context, s, mk.properties)
+                        self.service[s] = service
+                        self.poller.register(service.socket, zmq.POLLIN)
+                        return service
+                return None
+            return self.service[s]
 
     def connectServices(self, services):
-        mkServices = []
-        for s in services:
-            with self.lock:
-                if not self.service.get(s):
-                    cls = MKServiceRegister.get(s)
-                    if cls is None:
-                        print("Error: service %s not supported" % s)
-                    else:
-                        mk = self.endpoint.get(s)
-                        if mk is None:
-                            print("Error: no endpoint for %s" % s)
-                        else:
-                            service = cls(self.context, s, mk.properties)
-                            self.service[s] = service
-                            self.poller.register(service.socket, zmq.POLLIN)
-                            mkServices.append(service)
-                else:
-                    mkServices.append(self.service[s])
-        return mkServices
+        return [self.connectWith(s) for s in services]
 
-    def run(self):
+    def _run(self):
         print('thread start')
         while not self.quit:
             s = dict(self.poller.poll(self.timeout))
@@ -110,15 +129,22 @@ class Machinekit(object):
                                 print("    msg = '%s'" % msg)
                             else:
                                 # ignore all ping messages for now
-                                if rx.type == TYPES.MT_PING:
-                                    service.ping()
-                                else:
+                                if rx.type != TYPES.MT_PING:
                                     service.process(rx);
                         else:
                             #print('-', name)
                             pass
+            with self.lock:
+                for name, service in self.service.items():
+                    service.ping()
 
         print('thread stop')
+
+    def isPowered(self):
+        return (not self['status.io.estop']) and self['status.motion.enabled']
+
+    def isHomed(self):
+        return self.isPowered() and all([axis.homed for axis in self['status.motion.axis']])
 
 class ServiceMonitor(object):
     def __init__(self):
@@ -130,7 +156,7 @@ class ServiceMonitor(object):
     # zeroconf.ServiceBrowser interface
     def remove_service(self, zc, typ, name):
         for mkn, mk in self.machinekit.items():
-            mk.removeService(name)
+            mk._removeService(name)
 
     def add_service(self, zc, typ, name):
         info = zc.get_service_info(typ, name)
@@ -140,7 +166,7 @@ class ServiceMonitor(object):
             if not mk:
                 mk = Machinekit(uuid, info.properties)
                 self.machinekit[uuid] = mk
-            mk.addService(info.properties, info.name)
+            mk._addService(info.properties, info.name)
             #print(mk)
 
     def run(self):
@@ -157,7 +183,9 @@ class ServiceMonitor(object):
 
 _ServiceMonitor = ServiceMonitor()
 
-def Instances(services):
+def Instances(services = None):
+    if services is None:
+        return _ServiceMonitor.instances([])
     return _ServiceMonitor.instances(services)
 
 def PathSource():
@@ -168,6 +196,23 @@ def FileResource(filename):
 
 def IconResource(filename):
     return PySide.QtGui.QIcon(FileResource(filename))
+
+def taskMode(service, mode):
+    m = service['task.task.mode']
+    if m is None:
+        m = service['status.task.task.mode'] 
+    if m != mode:
+        return [MKCommandTaskSetMode(mode)]
+    return []
+
+def taskModeAuto(service):
+    return taskMode(service, STATUS.EmcTaskModeType.Value('EMC_TASK_MODE_AUTO'))
+
+def taskModeMDI(service):
+    return taskMode(service, STATUS.EmcTaskModeType.Value('EMC_TASK_MODE_MDI'))
+
+def taskModeManual(service):
+    return taskMode(service, STATUS.EmcTaskModeType.Value('EMC_TASK_MODE_MANUAL'))
 
 jog = None
 
@@ -184,46 +229,53 @@ class Jog(object):
                 self.cmd = service
             service.attach(self)
 
-        def setupJogButton(b, axes, icon):
-            b.clicked.connect(lambda : self.jogAxes(axes))
+        def setupJogButton(b, axes, icon, zero=False):
             b.setIcon(IconResource(icon))
             b.setText('')
+            if zero:
+                b.clicked.connect(lambda  : self.jogAxesZero(axes))
+            else:
+                b.clicked.connect(lambda  : self.jogAxes(axes))
+                b.pressed.connect(lambda  : self.jogAxesBegin(axes))
+                b.released.connect(lambda : self.jogAxesEnd(axes))
 
-        def setupSetButton(b, axes, value, width):
+        def setupSetButton(b, axes, widget, width):
             b.setMaximumWidth(width)
-            b.clicked.connect(lambda : self.setAxes(axes, value))
+            b.clicked.connect(lambda : self.setPosition(axes, widget))
 
         setupJogButton(self.ui.jogN,  'Y',  'arrow-up.svg')
-        setupJogButton(self.ui.jogNE, 'xY', 'arrow-right-up.svg')
-        setupJogButton(self.ui.jogE,  'x',  'arrow-right.svg')
-        setupJogButton(self.ui.jogSE, 'xy', 'arrow-right-down.svg')
+        setupJogButton(self.ui.jogNE, 'XY', 'arrow-right-up.svg')
+        setupJogButton(self.ui.jogE,  'X',  'arrow-right.svg')
+        setupJogButton(self.ui.jogSE, 'Xy', 'arrow-right-down.svg')
         setupJogButton(self.ui.jogS,  'y',  'arrow-down.svg')
-        setupJogButton(self.ui.jogSW, 'Xy', 'arrow-left-down.svg')
-        setupJogButton(self.ui.jogW,  'X',  'arrow-left.svg')
-        setupJogButton(self.ui.jogNW, 'XY', 'arrow-left-up.svg')
-        setupJogButton(self.ui.jog0,  '+',  'home-xy.svg')
-
+        setupJogButton(self.ui.jogSW, 'xy', 'arrow-left-down.svg')
+        setupJogButton(self.ui.jogW,  'x',  'arrow-left.svg')
+        setupJogButton(self.ui.jogNW, 'xY', 'arrow-left-up.svg')
         setupJogButton(self.ui.jogU,  'Z',  'arrow-up.svg')
         setupJogButton(self.ui.jogD,  'z',  'arrow-down.svg')
-        setupJogButton(self.ui.jogZ0, '-',  'home-z.svg')
+        setupJogButton(self.ui.jog0,  '-',  'home-xy.svg', True)
+        setupJogButton(self.ui.jogZ0, '|',  'home-z.svg',  True)
 
         buttonWidth = self.ui.setX.size().height()
-        setupSetButton(self.ui.setX,      'x', self.ui.posX.value(), buttonWidth)
-        setupSetButton(self.ui.setY,      'y', self.ui.posY.value(), buttonWidth)
-        setupSetButton(self.ui.setZ,      'z', self.ui.posZ.value(), buttonWidth)
-        setupSetButton(self.ui.setX0,     'x',                    0, buttonWidth)
-        setupSetButton(self.ui.setY0,     'y',                    0, buttonWidth)
-        setupSetButton(self.ui.setZ0,     'z',                    0, buttonWidth)
-        setupSetButton(self.ui.setXYZ0, 'xyz',                    0, buttonWidth)
+        setupSetButton(self.ui.setX,      'X', self.ui.posX, buttonWidth)
+        setupSetButton(self.ui.setY,      'Y', self.ui.posY, buttonWidth)
+        setupSetButton(self.ui.setZ,      'Z', self.ui.posZ, buttonWidth)
+        setupSetButton(self.ui.setX0,     'X',         None, buttonWidth)
+        setupSetButton(self.ui.setY0,     'Y',         None, buttonWidth)
+        setupSetButton(self.ui.setZ0,     'Z',         None, buttonWidth)
+        setupSetButton(self.ui.setXYZ0, 'XYZ',         None, buttonWidth)
+
+    def __getitem__(self, index):
+        path = index.split('.')
+        for service in self.services:
+            if service.name == path[0]:
+                if len(path) > 1:
+                    return service[path[1:]]
+                return service
+        return None
 
     def terminate(self):
         pass
-
-    def jogAxes(self, axes):
-        print('jog:', axes)
-
-    def setAxes(self, axes):
-        print('set', axes)
 
     def isConnected(self, topics=None):
         if topics is None:
@@ -235,22 +287,112 @@ class Jog(object):
                 return False
         return not self.cmd is None
 
-    def __getitem__(self, index):
-        path = index.split('.')
-        for service in self.services:
-            if service.name == path[0]:
-                if len(path) > 1:
-                    return service[path[1:]]
-                return service
-        return None
+    def setPosition(self, label, widget):
+        commands = taskModeMDI(self)
+
+        cmds = ['G10', 'L20', 'P1']
+        for l in label:
+            cmds.append("%s%f" % (l, 0 if widget is None else widget.value()))
+        code = ' '.join(cmds)
+        commands.append(MKCommandTaskExecute(code))
+
+        self.cmd.sendCommands(commands)
+
+    def joggingVelocity(self, axis):
+        return self['status.config.velocity.linear.max']
+
+    def getJogIndexAndVelocity(self, axis):
+        if axis in AxesForward:
+            index = AxesForward.index(axis)
+            veloc = self.joggingVelocity(axis)
+        if axis in AxesBackward:
+            index = AxesBackward.index(axis)
+            veloc = 0.0 - self.joggingVelocity(axis)
+        return (index, veloc)
+
+    def displayPos(self, axis):
+        return self["status.motion.position.actual.%s" % axis] - self["status.motion.offset.g5x.%s" % axis]
+
+    def jogAxesZero(self, axes):
+        jog = []
+        for axis in (['x', 'y'] if axes[0] == '-' else ['z']):
+            distance = self.displayPos(axis)
+            if distance != 0.0:
+                index, velocity = self.getJogIndexAndVelocity(axis)
+                if distance < 0:
+                    jog.append(MKCommandAxisJog(index, -velocity, -distance))
+                else:
+                    jog.append(MKCommandAxisJog(index,  velocity,  distance))
+        if jog:
+            sequence = [[cmd] for cmd in taskModeManual(self)]
+            sequence.append(jog)
+            self.cmd.sendCommandSequence(sequence)
+
+    def jogAxes(self, axes):
+        if not self.ui.jogContinuous.isChecked():
+            jog = []
+            for axis in axes:
+                index, velocity = self.getJogIndexAndVelocity(axis)
+                distance = 5.0
+                jog.append(MKCommandAxisJog(index, velocity, distance))
+            if jog:
+                sequence = [[cmd] for cmd in taskModeManual(self)]
+                sequence.append(jog)
+                self.cmd.sendCommandSequence(sequence)
+
+    def jogAxesBegin(self, axes):
+        if self.ui.jogContinuous.isChecked():
+            jog = []
+            for axis in axes:
+                index, velocity = self.getJogIndexAndVelocity(axis)
+                jog.append(MKCommandAxisJog(index,  velocity))
+            if jog:
+                sequence = [[cmd] for cmd in taskModeManual(self)]
+                sequence.append(jog)
+                self.cmd.sendCommandSequence(sequence)
+
+
+    def jogAxesEnd(self, axes):
+        if self.ui.jogContinuous.isChecked():
+            jog = []
+            for axis in axes:
+                index, velocity = self.getJogIndexAndVelocity(axis)
+                jog.append(MKCommandAxisAbort(index))
+            if jog:
+                sequence = [[cmd] for cmd in taskModeManual(self)]
+                sequence.append(jog)
+                self.cmd.sendCommandSequence(sequence)
+    def updateDRO(self, connected, powered):
+        def updateAxisWidget(w, pos, homed):
+            if homed:
+                w.setStyleSheet('color:darkgreen; background-color:white')
+            else:
+                w.setStyleSheet('color:blueviolet; background-color:lightGray')
+            w.setValue(pos)
+
+        if connected and powered:
+            actual = self['status.motion.position.actual']
+            off = self['status.motion.offset.g5x']
+            axis = self['status.motion.axis']
+            updateAxisWidget(self.ui.posX, actual['x'] - off['x'], axis[0].homed)
+            updateAxisWidget(self.ui.posY, actual['y'] - off['y'], axis[1].homed)
+            updateAxisWidget(self.ui.posZ, actual['z'] - off['z'], axis[2].homed)
 
     def updateUI(self):
-        if self.isConnected():
+        connected = self.isConnected()
+        powered = self.mk.isPowered()
+
+        if connected:
             self.ui.setWindowTitle(self['status.config.name'])
 
+        self.updateDRO(connected, powered)
+        self.ui.dockWidgetContents.setEnabled(powered)
+
+
     def changed(self, service, msg):
-        if service.topicName() == 'status.config':
+        if 'status' in service.topicName():
             self.updateUI()
+        print(msg, self['status.motion.axis.2.homed'], self['status.motion.current_vel'])
 
 class TreeSelectionObserver(object):
     def __init__(self, notify):
@@ -362,3 +504,38 @@ class Execute(object):
             self.ui.execute.layout().setDirection(PySide.QtGui.QBoxLayout.LeftToRight)
             self.ob.setIcon(PySide.QtGui.QApplication.style().standardIcon(PySide.QtGui.QStyle.SP_ToolBarVerticalExtensionButton))
             self.oi = 'v'
+
+def Estop(mk):
+    status = mk.connectWith('status')
+    command = mk.connectWith('command')
+
+    commands = []
+    if status['io.estop']:
+        commands.append(MKCommandEstop(False))
+    commands.append(MKCommandPower(not mk.isPowered()))
+    command.sendCommands(commands)
+
+def Home(mk):
+    status = mk.connectWith('status')
+    command = mk.connectWith('command')
+
+    sequence = [[cmd] for cmd in taskModeManual(status)]
+    toHome = [axis.index for axis in status['motion.axis'] if not axis.homed]
+    order  = {}
+
+    for axis in status['config.axis']:
+        if axis.index in toHome:
+            batch = order.get(axis.home_sequence)
+            if batch is None:
+                batch = []
+            batch.append(axis.index)
+            order[axis.home_sequence] = batch
+
+    for key in sorted(order):
+        batch = order[key]
+        sequence.append([MKCommandAxisHome(index, True) for index in batch])
+        for index in batch:
+            sequence.append([MKCommandPauseUntil(lambda index=index: status["motion.axis.%d.homed" % index])])
+
+    command.sendCommandSequence(sequence)
+
