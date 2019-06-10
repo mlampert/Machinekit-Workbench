@@ -76,13 +76,13 @@ class HUD(object):
         self.setPosition(0, 0, 0)
 
     def setPosition(self, x, y, z):
-        print(self.up)
+        #print(self.up)
         self.up += 1
         self.txt.string.setValues([axisFmt('X', x), axisFmt('Y', y), axisFmt('Z', z)])
         self.tPos.translation = (x, y, z)
 
-        self.sep.touch()
-        self.tSep.touch()
+        #self.sep.touch()
+        #self.tSep.touch()
 
     def show(self):
         self.sup = self.render.addSuperimposition(self.sep)
@@ -102,7 +102,7 @@ class Hud(object):
         self.mk = mk
         self.hud = HUD(view)
         self.status = self.mk.connectWith('status')
-        self.status.attach(self)
+        self.connector = machinekit.ServiceConnector(self.status, self)
         self.updateUI()
         self.hud.show()
 

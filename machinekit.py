@@ -26,6 +26,20 @@ MKServiceRegister = {
         '': None
         }
 
+class ServiceConnector(PySide.QtCore.QObject):
+    updated = PySide.QtCore.Signal(object, object)
+
+    def __init__(self, service, observer):
+        super().__init__()
+        self.service = service
+        self.observer = observer
+
+        self.updated.connect(observer.changed)
+        self.service.attach(self)
+
+    def changed(self, service, observer):
+        self.updated.emit(service, observer)
+
 class Endpoint(object):
     def __init__(self, service, name, properties):
         self.service = service
@@ -34,8 +48,10 @@ class Endpoint(object):
         self.dsn = properties[b'dsn']
         self.uuid = properties[b'instance']
 
-class Machinekit(object):
+class Machinekit(PySide.QtCore.QThread):
     def __init__(self, uuid, properties):
+        super(self.__class__, self).__init__()
+
         self.uuid = uuid
         self.properties = properties
         self.endpoint = {}
@@ -67,7 +83,7 @@ class Machinekit(object):
             self.endpoint[service.decode()] = Endpoint(service, name, properties)
             self.quit = False
             if self.thread is None:
-                self.thread = threading.Thread(target=self._run)
+                self.thread = self
                 self.thread.start()
         if b'status' == service:
             self.connectServices(['status'])
@@ -82,6 +98,7 @@ class Machinekit(object):
                 self.quit = True
         if not self.thread is None:
             self.thread.join
+            self.thread = None
 
     def providesServices(self, services):
         candidates = [s for s in [self.endpoint.get(v) for v in services]]
@@ -108,7 +125,7 @@ class Machinekit(object):
     def connectServices(self, services):
         return [self.connectWith(s) for s in services]
 
-    def _run(self):
+    def run(self):
         print('thread start')
         while not self.quit:
             s = dict(self.poller.poll(self.timeout))

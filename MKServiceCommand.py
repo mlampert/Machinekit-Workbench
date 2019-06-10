@@ -58,15 +58,7 @@ class MKServiceCommand(MKService):
         self.commandID = itertools.count()
         self.locked = threading.Lock()
         self.outstandingMsgs = {}
-        self.observers = []
         self.compounds = []
-
-    def attach(self, observer):
-        if not observer in self.observers:
-            self.observers.append(observer)
-
-    def detach(self, observer):
-        self.observers = [o for o in self.observers if o != observer]
 
     def topicName(self):
         return 'command'
@@ -92,8 +84,7 @@ class MKServiceCommand(MKService):
             compound.processCommand(msg)
         self.compounds = [compound for compound in self.compounds if compound.isActive()]
 
-        for observer in self.observers:
-            observer.changed(self, msg)
+        self.notifyObservers(msg)
 
         if msg.isCompleted() and self.outstandingMsgs.get(msg.msg.ticket):
             #print("del [%d]: %s" % (msg.msg.ticket, msg))

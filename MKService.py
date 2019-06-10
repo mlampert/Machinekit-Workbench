@@ -1,11 +1,12 @@
-#!/usr/bin/python
-#
-
 import zmq
 
-class MKService(object):
+from MKObserverable import *
+
+class MKService(MKObserverable):
     '''The base class of all services'''
     def __init__(self, name, properties):
+        super().__init__()
+
         self.service = properties[b'service']
         self.uuid    = properties[b'uuid']
         self.dsn     = properties[b'dsn']

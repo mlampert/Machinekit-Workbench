@@ -10,11 +10,12 @@ class Jog(object):
         self.mk = mk
         self.ui = FreeCADGui.PySideUic.loadUi(machinekit.FileResource('jog.ui'))
 
+        self.connectors = []
         self.services = self.mk.connectServices(['command', 'status'])
         for service in self.services:
             if 'command' == service.name:
                 self.cmd = service
-            service.attach(self)
+            self.connectors.append(machinekit.ServiceConnector(service, self))
 
         def setupJogButton(b, axes, icon, zero=False):
             b.setIcon(machinekit.IconResource(icon))

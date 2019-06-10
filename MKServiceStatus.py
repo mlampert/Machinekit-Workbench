@@ -1,9 +1,13 @@
+from MKObserverable import *
 from MKService import *
 
 from machinetalk.protobuf.status_pb2 import *
 from machinetalk.protobuf.types_pb2 import MT_EMCSTAT_FULL_UPDATE
 
-class MKServiceContainer(object):
+class MKServiceContainer(MKObserverable):
+    def __init__(self):
+        super().__init__()
+
     def __getitem__(self, path):
         try:
             attr = self.__getattribute__(path[0])
@@ -14,6 +18,7 @@ class MKServiceContainer(object):
 
 class minmax(MKServiceContainer):
     def __init__(self, min, max, default=None):
+        super().__init__()
         self.min = min
         self.max = max
         self.default = default
@@ -98,6 +103,7 @@ def returnAttribute(attr, path):
 
 class MKAxisConfig(MKServiceContainer):
     def __init__(self, axis):
+        super().__init__()
         self.index = axis.index
         self.limit = minmax(axis.min_position_limit, axis.max_position_limit)
         self.ferror = minmax(axis.min_ferror, axis.max_ferror)
@@ -120,6 +126,7 @@ class MKAxisConfig(MKServiceContainer):
 
 class MKAxis(MKServiceContainer):
     def __init__(self, axis):
+        super().__init__()
         self.index = axis.index
         self.enabled = axis.enabled
         self.fault = axis.fault
@@ -158,21 +165,12 @@ class MKAxis(MKServiceContainer):
 
 class MKServiceStatusHandler(MKServiceContainer):
     def __init__(self):
+        super().__init__()
         self.valid = False
-        self.observers = []
         self.fullUpdated = []
 
     def isValid(self):
         return self.valid
-
-    def attach(self, observer):
-        if not observer in self.observers:
-            self.observers.append(observer)
-            if self.isValid():
-                observer.changed(self, self.fullUpdated)
-
-    def detach(self, observer):
-        self.observers = [o for o in self.observers if o != observer]
 
     def process(self, container):
         obj = self.handlerObject(container)
@@ -183,12 +181,7 @@ class MKServiceStatusHandler(MKServiceContainer):
             self.valid = True
         elif self.isValid():
             updated = self.processIncremental(obj)
-
-        for observer in self.observers:
-            if hasattr(observer, 'changedContainer'):
-                observer.changedContainer(self, container)
-            else:
-                observer.changed(self, updated)
+        self.notifyObservers(updated)
 
     def handlerObject(self, container):
         return container
