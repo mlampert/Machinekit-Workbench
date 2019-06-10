@@ -1,7 +1,8 @@
 import FreeCAD
 import FreeCADGui
-import MachinekitJog
+import MachinekitExecute
 import MachinekitHud
+import MachinekitJog
 import machinekit
 
 from PySide import QtCore, QtGui
@@ -56,7 +57,7 @@ class MachinekitCommandExecute(MachinekitCommand):
         super(self.__class__, self).__init__(['command', 'status'])
 
     def activate(self, mk):
-        return machinekit.Execute(mk)
+        return MachinekitExecute.Execute(mk)
 
     def GetResources(self):
         return {

@@ -230,119 +230,6 @@ def taskModeMDI(service):
 def taskModeManual(service):
     return taskMode(service, STATUS.EmcTaskModeType.Value('EMC_TASK_MODE_MANUAL'))
 
-jog = None
-
-class TreeSelectionObserver(object):
-    def __init__(self, notify):
-        self.notify = notify
-        self.job = None
-
-    def addSelection(self, doc, obj, sub, pnt):
-        self.notify()
-
-    def removeSelection(self, doc, obj, sub):
-        self.notify()
-
-    def setSelection(self, doc, something=None):
-        self.notify()
-
-    def clearSelection(self, doc):
-        self.notify()
-
-class EventFilter(PySide.QtCore.QObject):
-    def eventFilter(self, obj, event):
-        if event.type() == PySide.QtCore.QChildEvent.Resize:
-            print(event.type(), event.size())
-        return PySide.QtCore.QObject.eventFilter(self, obj, event)
-
-class Execute(object):
-    def __init__(self, mk):
-        self.mk = mk
-        self.ui = FreeCADGui.PySideUic.loadUi(FileResource('execute.ui'), self)
-        if True:
-            tb = PySide.QtGui.QWidget()
-            lo = PySide.QtGui.QHBoxLayout()
-            tb.setLayout(lo)
-            tb.setContentsMargins(0, 0, 0, 0)
-            self.title = PySide.QtGui.QLabel()
-            self.title.setText('hugo')
-            self.title.setContentsMargins(0, 0, 0, 0)
-            lo.addWidget(self.title)
-            spacer = PySide.QtGui.QSpacerItem(0,0,PySide.QtGui.QSizePolicy.Expanding, PySide.QtGui.QSizePolicy.Minimum)
-            lo.addItem(spacer)
-            self.ob = PySide.QtGui.QPushButton()
-            self.ob.setFlat(True)
-            self.ob.setIcon(PySide.QtGui.QApplication.style().standardIcon(PySide.QtGui.QStyle.SP_ToolBarVerticalExtensionButton))
-            self.ob.clicked.connect(self.toggleOrientation)
-            self.oi = 'v'
-            bs = None
-            lo.addWidget(self.ob)
-            for b in self.ui.findChildren(PySide.QtGui.QAbstractButton):
-                if 'qt_dockwidget' in b.objectName():
-                    bt = PySide.QtGui.QPushButton()
-                    bt.setIcon(b.icon())
-                    print(b.icon().name())
-                    bs = b.icon().availableSizes()[-1] + PySide.QtCore.QSize(3,3)
-                    bt.setMaximumSize(bs)
-                    bt.setFlat(True)
-                    bt.clicked.connect(b.click)
-                    lo.addWidget(bt)
-            if bs:
-                self.ob.setMaximumSize(bs)
-            lo.setSpacing(0)
-            lo.setContentsMargins(0, 0, 0, 0)
-            self.ui.setTitleBarWidget(tb)
-        self.job = None
-
-        #self.ui.dockWidgetContents.resized.connect(self.resized)
-
-        self.ui.run.clicked.connect(lambda : self.ui.status.setText('run'))
-        self.ui.step.clicked.connect(lambda : self.ui.status.setText('step'))
-        self.ui.pause.clicked.connect(lambda p: self.ui.status.setText("pause: %s" % p))
-        self.ui.stop.clicked.connect(lambda : self.ui.status.setText('stop'))
-        self.ui.run.clicked.connect(lambda : _ServiceMonitor.printAll())
-
-        self.ui.status.setText('')
-        rect = self.ui.geometry()
-        self.ui.resize(rect.width(), 0)
-
-        self.observer = TreeSelectionObserver(self.objectSelectionChanged)
-        FreeCADGui.Selection.addObserver(self.observer)
-        self.objectSelectionChanged()
-
-        #self.eventFilter = EventFilter()
-        #self.ui.installEventFilter(self.eventFilter)
-
-    def terminate(self):
-        FreeCADGui.Selection.removeObserver(self.observer)
-
-    def resized(self):
-        print('resized')
-
-    def objectSelectionChanged(self):
-        jobs = [sel.Object for sel in FreeCADGui.Selection.getSelectionEx() if sel.Object.Name.startswith('Job')]
-        if len(jobs) == 1 and jobs[0] != self.job:
-            self.job = jobs[0]
-        else:
-            self.job = None
-
-        if self.job is None:
-            self.ui.run.setEnabled(False)
-            self.ui.step.setEnabled(False)
-        else:
-            self.ui.run.setEnabled(True)
-            self.ui.step.setEnabled(True)
-
-    def toggleOrientation(self):
-        if 'v' == self.oi:
-            self.ui.execute.layout().setDirection(PySide.QtGui.QBoxLayout.TopToBottom)
-            self.ob.setIcon(PySide.QtGui.QApplication.style().standardIcon(PySide.QtGui.QStyle.SP_ToolBarHorizontalExtensionButton))
-            self.oi = 'h'
-        else:
-            self.ui.execute.layout().setDirection(PySide.QtGui.QBoxLayout.LeftToRight)
-            self.ob.setIcon(PySide.QtGui.QApplication.style().standardIcon(PySide.QtGui.QStyle.SP_ToolBarVerticalExtensionButton))
-            self.oi = 'v'
-
 def Estop(mk):
     status = mk.connectWith('status')
     command = mk.connectWith('command')
@@ -376,4 +263,8 @@ def Home(mk):
             sequence.append([MKCommandPauseUntil(lambda index=index: status["motion.axis.%d.homed" % index])])
 
     command.sendCommandSequence(sequence)
+
+hud     = None
+jog     = None
+execute = None
 

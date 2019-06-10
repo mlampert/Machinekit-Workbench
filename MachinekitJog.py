@@ -150,6 +150,7 @@ class Jog(object):
                 sequence = [[cmd] for cmd in machinekit.taskModeManual(self)]
                 sequence.append(jog)
                 self.cmd.sendCommandSequence(sequence)
+
     def updateDRO(self, connected, powered):
         def updateAxisWidget(w, pos, homed):
             if homed:
