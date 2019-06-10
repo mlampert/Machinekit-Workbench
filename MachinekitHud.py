@@ -1,21 +1,16 @@
-# Thanks to Chris_G
-# https://forum.freecadweb.org/viewtopic.php?f=22&t=16889&start=10#p136770
-
-import FreeCAD as App
-import FreeCADGui as Gui
+import FreeCAD
+import FreeCADGui
+import machinekit
 import math
-import random
 
+from MKCommand import *
 from pivy import coin
 
 def axisFmt(axis, val):
     return "%s: %8.3f" % (axis, val)
 
-def randf():
-    return random.randint(-1000000, 1000000) / 1000.0
-
 class HUD(object):
-    def __init__(self, view=Gui.ActiveDocument.ActiveView, fontSize=33, coneHeight=100):
+    def __init__(self, view, fontSize=33, coneHeight=30):
         self.view = view
         self.fsze = fontSize
         self.tsze = coneHeight
@@ -77,11 +72,17 @@ class HUD(object):
         self.render = self.viewer.getSoRenderManager()
         self.sup = None
 
-        self.setValues()
+        self.up = 0
+        self.setPosition(0, 0, 0)
 
-    def setPos(self, x, y, z):
+    def setPosition(self, x, y, z):
+        print(self.up)
+        self.up += 1
         self.txt.string.setValues([axisFmt('X', x), axisFmt('Y', y), axisFmt('Z', z)])
         self.tPos.translation = (x, y, z)
+
+        self.sep.touch()
+        self.tSep.touch()
 
     def show(self):
         self.sup = self.render.addSuperimposition(self.sep)
@@ -95,11 +96,38 @@ class HUD(object):
             self.view.getSceneGraph().removeChild(self.tSep)
             self.view.getSceneGraph().touch()
 
-    def setValues(self, x=None, y=None, z=None):
-        if x is None:
-            x = randf()
-        if y is None:
-            y = randf()
-        if z is None:
-            z = randf()
-        self.setPos(x, y, z)
+
+class Hud(object):
+    def __init__(self, mk, view):
+        self.mk = mk
+        self.hud = HUD(view)
+        self.status = self.mk.connectWith('status')
+        self.status.attach(self)
+        self.updateUI()
+        self.hud.show()
+
+    def terminate(self):
+        self.status.detach(self)
+        self.hud.hide()
+
+    def displayPos(self, axis):
+        return self.status["motion.position.actual.%s" % axis] - self.status["motion.offset.g5x.%s" % axis]
+
+    def updateUI(self):
+        x = self.displayPos('x')
+        y = self.displayPos('y')
+        z = self.displayPos('z')
+        self.hud.setPosition(x, y, z)
+
+    def changed(self, service, msg):
+        self.updateUI()
+
+hud = None
+
+def ToggleHud(mk):
+    global hud
+    if hud is None:
+        hud = Hud(mk, FreeCADGui.ActiveDocument.ActiveView)
+    else:
+        hud.terminate()
+        hud = None

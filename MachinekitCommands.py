@@ -1,6 +1,7 @@
 import FreeCAD
 import FreeCADGui
 import MachinekitJog
+import MachinekitHud
 import machinekit
 
 from PySide import QtCore, QtGui
@@ -64,6 +65,25 @@ class MachinekitCommandExecute(MachinekitCommand):
                 'ToolTip'   : 'Interface for controlling file execution'
                 }
 
+class MachinekitCommandHud(MachinekitCommand):
+    def __init__(self):
+        super(self.__class__, self).__init__(['command', 'status'])
+
+    def IsActive(self):
+        if super(self.__class__, self).IsActive():
+            return not FreeCADGui.ActiveDocument is None
+        return False
+
+    def activate(self, mk):
+        MachinekitHud.ToggleHud(mk)
+
+    def GetResources(self):
+        return {
+                'Pixmap'    : machinekit.FileResource('machinekiticon.png'),
+                'MenuText'  : 'Hud',
+                'ToolTip'   : 'HUD DRO interface for machine setup'
+                }
+
 
 class MachinekitCommandEstop(MachinekitCommand):
     def __init__(self):
@@ -100,7 +120,7 @@ class MachinekitCommandHome(MachinekitCommand):
                 }
 
 ToolbarName  = 'MachinekitTools'
-ToolbarTools = ['MachinekitCommandJog', 'MachinekitCommandExecute']
+ToolbarTools = ['MachinekitCommandHud', 'MachinekitCommandJog', 'MachinekitCommandExecute']
 MenuList     = ["MachinekitCommandEstop", "MachinekitCommandHome", "Separator"] + ToolbarTools
 
 def Activated():
@@ -112,5 +132,6 @@ def Deactivated():
 FreeCADGui.addCommand('MachinekitCommandEstop',   MachinekitCommandEstop())
 FreeCADGui.addCommand('MachinekitCommandExecute', MachinekitCommandExecute())
 FreeCADGui.addCommand('MachinekitCommandHome',    MachinekitCommandHome())
+FreeCADGui.addCommand('MachinekitCommandHud',     MachinekitCommandHud())
 FreeCADGui.addCommand('MachinekitCommandJog',     MachinekitCommandJog())
 

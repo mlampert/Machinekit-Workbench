@@ -179,5 +179,4 @@ class Jog(object):
     def changed(self, service, msg):
         if 'status' in service.topicName():
             self.updateUI()
-        print(msg, self['status.motion.axis.2.homed'], self['status.motion.current_vel'])
 
