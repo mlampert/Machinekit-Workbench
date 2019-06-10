@@ -4,6 +4,7 @@ FreeCAD workbench for Machinekit integration in Python 3.
 At least that's what it's supposed to be once it grows up - which might take a bit of time.
 
 ## Dependencies
+* python3-pyftplib
 * python3-protobuf
 * python3-zeroconf
 * python3-zmq

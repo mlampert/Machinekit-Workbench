@@ -41,12 +41,22 @@ class ServiceConnector(PySide.QtCore.QObject):
         self.updated.emit(service, observer)
 
 class Endpoint(object):
-    def __init__(self, service, name, properties):
+    def __init__(self, service, name, addr, prt, properties):
         self.service = service
         self.name = name
+        self.addr = addr
+        self.prt = prt
         self.properties = properties
         self.dsn = properties[b'dsn']
         self.uuid = properties[b'instance']
+        print("machinetalk.%-13s %s:%d" % (self.service.decode(), self.address(), self.port()))
+
+    def addressRaw(self):
+        return self.addr
+    def address(self):
+        return "%d.%d.%d.%d" % (self.addr[0], self.addr[1], self.addr[2], self.addr[3])
+    def port(self):
+        return self.prt
 
 class Machinekit(PySide.QtCore.QThread):
     def __init__(self, uuid, properties):
@@ -77,10 +87,10 @@ class Machinekit(PySide.QtCore.QThread):
             return service
         return None
 
-    def _addService(self, properties, name):
+    def _addService(self, properties, name, address, port):
         service = properties[b'service']
         with self.lock:
-            self.endpoint[service.decode()] = Endpoint(service, name, properties)
+            self.endpoint[service.decode()] = Endpoint(service, name, address, port, properties)
             self.quit = False
             if self.thread is None:
                 self.thread = self
@@ -177,12 +187,13 @@ class ServiceMonitor(object):
     def add_service(self, zc, typ, name):
         info = zc.get_service_info(typ, name)
         if info.properties.get(b'service'):
+            #print(info)
             uuid = info.properties[b'uuid']
             mk = self.machinekit.get(uuid)
             if not mk:
                 mk = Machinekit(uuid, info.properties)
                 self.machinekit[uuid] = mk
-            mk._addService(info.properties, info.name)
+            mk._addService(info.properties, info.name, info.address, info.port)
             #print(mk)
 
     def run(self):

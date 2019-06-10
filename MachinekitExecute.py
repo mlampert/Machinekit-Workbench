@@ -1,9 +1,16 @@
 import FreeCAD
 import FreeCADGui
+import PathScripts.PathPost as PathPost
+import PathScripts.PathUtil as PathUtil
 import PySide.QtCore
 import PySide.QtGui
+import ftplib
+import io
+import ftplib
 import machinekit
 import machinetalk.protobuf.status_pb2 as STATUS
+
+from MKCommand import *
 
 class TreeSelectionObserver(object):
     def __init__(self, notify):
@@ -86,11 +93,12 @@ class Execute(object):
 
         self.job = None
 
-        self.ui.run.clicked.connect(lambda : self.ui.status.setText('run'))
-        self.ui.step.clicked.connect(lambda : self.ui.status.setText('step'))
-        self.ui.pause.clicked.connect(lambda p: self.ui.status.setText("pause: %s" % p))
-        self.ui.stop.clicked.connect(lambda : self.ui.status.setText('stop'))
-        self.ui.run.clicked.connect(lambda : _ServiceMonitor.printAll())
+        self.ui.load.clicked.connect(self.executeUpload)
+
+        self.ui.run.clicked.connect(self.executeRun)
+        self.ui.step.clicked.connect(self.executeStep)
+        self.ui.pause.clicked.connect(self.executePause)
+        self.ui.stop.clicked.connect(self.executeStop)
 
         self.ui.status.setText('')
         rect = self.ui.geometry()
@@ -155,6 +163,57 @@ class Execute(object):
     def isPaused(self):
         return self.isState('EMC_TASK_INTERP_PAUSED')
 
+    def executeUpload(self):
+        if self.job:
+            currTool = None
+            postlist = []
+            for obj in self.job.Operations.Group:
+                tc = PathUtil.toolControllerForOp(obj)
+                if tc is not None:
+                    if tc.ToolNumber != currTool:
+                        postlist.append(tc)
+                        currTool = tc.ToolNumber
+                postlist.append(obj)
+
+            post = PathPost.CommandPathPost()
+            (fail, gcode) = post.exportObjectsWith(postlist, self.job, False)
+            if not fail:
+                buf = io.BytesIO(gcode.encode())
+                endpoint = self.mk.endpoint.get('file')
+                if endpoint:
+                    ftp = ftplib.FTP()
+                    ftp.connect(endpoint.address(), endpoint.port())
+                    ftp.login()
+                    filename = 'FreeCAD.ngc'
+                    ftp.storbinary("STOR %s" % filename, buf)
+                    sequence = machinekit.taskModeAuto(self)
+                    path = "%s/%s" % (self['status.config.remote_path'], filename)
+                    sequence.append(MKCommandOpenFile(path, False))
+                    self.cmd.sendCommands(sequence)
+                else:
+                    print('No endpoint found')
+            else:
+                print('Post processing failed')
+
+    def executeRun(self):
+        sequence = machinekit.taskModeAuto(self)
+        sequence.append(MKCommandTaskRun(False))
+        self.cmd.sendCommands(sequence)
+
+    def executeStep(self):
+        sequence = machinekit.taskModeAuto(self)
+        sequence.append(MKCommandTaskStep())
+        self.cmd.sendCommands(sequence)
+
+    def executePause(self):
+        if self.isPaused():
+            self.cmd.sendCommand(MKCommandTaskResume())
+        else:
+            self.cmd.sendCommand(MKCommandTaskPause())
+
+    def executeStop(self):
+        self.cmd.sendCommand(MKCommandTaskAbort())
+
     def updateExecute(self, connected, powered):
         if connected and powered:
             if self.isIdle():
@@ -183,6 +242,12 @@ class Execute(object):
         connected = self.isConnected()
         powered = self.mk.isPowered()
 
+        title = '-.-'
+        if connected and powered:
+            path = self['status.task.file']
+            if path:
+                title = path.split('/')[-1]
+        self.title.setText(title)
         self.updateExecute(connected, powered)
         self.ui.dockWidgetContents.setEnabled(powered)
 
