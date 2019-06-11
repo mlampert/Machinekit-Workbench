@@ -186,7 +186,7 @@ class ServiceMonitor(object):
 
     def add_service(self, zc, typ, name):
         info = zc.get_service_info(typ, name)
-        if info.properties.get(b'service'):
+        if info and info.properties.get(b'service'):
             #print(info)
             uuid = info.properties[b'uuid']
             mk = self.machinekit.get(uuid)

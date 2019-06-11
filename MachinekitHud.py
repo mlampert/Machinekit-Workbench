@@ -115,7 +115,7 @@ class Hud(object):
         return self.status["motion.position.actual.%s" % axis] - self.status["motion.offset.g5x.%s" % axis]
 
     def spindleRunning(self):
-        return not self.status['motion.spindle.brake']
+        return self.status['motion.spindle.enabled'] and self.status['motion.spindle.speed'] > 0
 
     def updateUI(self):
         x = self.displayPos('x')
