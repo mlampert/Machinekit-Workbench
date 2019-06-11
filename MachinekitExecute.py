@@ -188,6 +188,7 @@ class Execute(object):
                     ftp.storbinary("STOR %s" % filename, buf)
                     sequence = machinekit.taskModeAuto(self)
                     path = "%s/%s" % (self['status.config.remote_path'], filename)
+                    sequence.append(MKCommandTaskReset(False))
                     sequence.append(MKCommandOpenFile(path, False))
                     self.cmd.sendCommands(sequence)
                 else:

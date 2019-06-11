@@ -10,7 +10,7 @@ def axisFmt(axis, val):
     return "%s: %8.3f" % (axis, val)
 
 class HUD(object):
-    def __init__(self, view, fontSize=33, coneHeight=30):
+    def __init__(self, view, fontSize=33, coneHeight=5):
         self.view = view
         self.fsze = fontSize
         self.tsze = coneHeight
@@ -55,7 +55,7 @@ class HUD(object):
         self.tPos.translation = (xpos, ypos, 0)
 
         self.tMat = coin.SoMaterial()
-        self.tMat.diffuseColor = coin.SbColor(0.9, 0, 0.9)
+        self.tMat.diffuseColor = coin.SbColor(0.4, 0.4, 0.4)
         self.tMat.transparency = 0.8
 
         self.tool = coin.SoCone()
@@ -73,16 +73,17 @@ class HUD(object):
         self.sup = None
 
         self.up = 0
-        self.setPosition(0, 0, 0)
+        self.setPosition(0, 0, 0, False)
 
-    def setPosition(self, x, y, z):
-        #print(self.up)
+    def setPosition(self, x, y, z, hot=False):
         self.up += 1
         self.txt.string.setValues([axisFmt('X', x), axisFmt('Y', y), axisFmt('Z', z)])
         self.tPos.translation = (x, y, z)
 
-        #self.sep.touch()
-        #self.tSep.touch()
+        if hot:
+            self.tMat.diffuseColor = coin.SbColor(0.9, 0, 0.0)
+        else:
+            self.tMat.diffuseColor = coin.SbColor(0.0, 0, 0.9)
 
     def show(self):
         self.sup = self.render.addSuperimposition(self.sep)
@@ -113,11 +114,15 @@ class Hud(object):
     def displayPos(self, axis):
         return self.status["motion.position.actual.%s" % axis] - self.status["motion.offset.g5x.%s" % axis]
 
+    def spindleRunning(self):
+        return not self.status['motion.spindle.brake']
+
     def updateUI(self):
         x = self.displayPos('x')
         y = self.displayPos('y')
         z = self.displayPos('z')
-        self.hud.setPosition(x, y, z)
+        hot = self.spindleRunning()
+        self.hud.setPosition(x, y, z, hot)
 
     def changed(self, service, msg):
         self.updateUI()

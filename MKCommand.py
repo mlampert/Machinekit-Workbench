@@ -99,6 +99,13 @@ class MKCommandTaskResume(MKCommandExecute):
     def __init__(self):
         MKCommandExecute.__init__(self, TYPES.MT_EMC_TASK_PLAN_RESUME)
 
+class MKCommandTaskReset(MKCommandExecute):
+    def __init__(self, preview):
+        if preview:
+            MKCommandPreview.__init__(self, TYPES.MT_EMC_TASK_PLAN_INIT)
+        else:
+            MKCommandExecute.__init__(self, TYPES.MT_EMC_TASK_PLAN_INIT)
+
 class MKCommandAxisHome(MKCommand):
     def __init__(self, index, home=True):
         MKCommand.__init__(self, TYPES.MT_EMC_AXIS_HOME if home else TYPES.MT_EMC_AXIS_UNHOME)
