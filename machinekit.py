@@ -13,6 +13,7 @@ import zmq
 from MKServiceCommand import *
 from MKServiceError import *
 from MKServiceStatus import *
+from MKServiceHal import *
 
 AxesForward  = ['X', 'Y', 'Z', 'A', 'B', 'C', 'U', 'V', 'W']
 AxesBackward = ['x', 'y', 'z', 'a', 'b', 'c', 'u', 'v', 'w']
@@ -20,9 +21,10 @@ AxesName     = AxesForward
 
 
 MKServiceRegister = {
-        'command' : MKServiceCommand,
-        'error'   : MKServiceError,
-        'status'  : MKServiceStatus,
+        'command'   : MKServiceCommand,
+        'error'     : MKServiceError,
+        'halrcomp'  : MKServiceHal,
+        'status'    : MKServiceStatus,
         '': None
         }
 
@@ -37,8 +39,11 @@ class ServiceConnector(PySide.QtCore.QObject):
         self.updated.connect(observer.changed)
         self.service.attach(self)
 
-    def changed(self, service, observer):
-        self.updated.emit(service, observer)
+    def changed(self, service, arg):
+        self.updated.emit(service, arg)
+
+    def disconnect(self):
+        self.updated.disconnect()
 
 class Endpoint(object):
     def __init__(self, service, name, addr, prt, properties):
@@ -58,6 +63,30 @@ class Endpoint(object):
     def port(self):
         return self.prt
 
+class ManualToolChangeNotifier(object):
+    def __init__(self, mk):
+        self.mk = mk
+        self.service = None
+        self.connector = None
+        self.connect(self)
+
+    def disconnect(self):
+        if self.connector:
+            self.connector.disconnect()
+        self.connector = None
+        self.service = None
+
+    def connect(self):
+        if self.service:
+            self.disconnect()
+        self.service = mk.connectWith('halrcomp')
+        if self.service:
+            self.connector = ServiceConnector(self.service, self)
+
+    def changed(self, service, tc):
+        if tc.changeTool():
+            print('now what?')
+
 class Machinekit(PySide.QtCore.QThread):
     def __init__(self, uuid, properties):
         super(self.__class__, self).__init__()
@@ -73,6 +102,7 @@ class Machinekit(PySide.QtCore.QThread):
         self.quit = False
         self.timeout = 100
         self.thread = None
+        self.manualToolChangeNotifier = None
 
     def __str__(self):
         with self.lock:
@@ -95,13 +125,21 @@ class Machinekit(PySide.QtCore.QThread):
             if self.thread is None:
                 self.thread = self
                 self.thread.start()
-        if b'status' == service:
-            self.connectServices(['status'])
+        if service == b'status':
+            s = self.connectWith(service.decode())
+        if service == b'halrcomp' and self.manualToolChangeNotifier:
+            self.manualToolChangeNotifier.connect()
+
+    def startManualToolChangeNotifier(self):
+        if self.manualToolChangeNotifier is None:
+            self.manualToolChangeNotifier = ManualToolChangeNotifier(self)
 
     def _removeService(self, name):
         with self.lock:
             for epn, ep in self.endpoint.items():
                 if ep.name == name:
+                    if epn == 'halrcomp' and self.manualToolChangeNotifier:
+                        self.manualToolChangeNotifier.disconnect()
                     del self.endpoint[epn]
                     break
             if 0 == len(self.endpoint):
