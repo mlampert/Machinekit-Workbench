@@ -1,5 +1,11 @@
+import itertools
+import machinetalk.protobuf.object_pb2 as OBJECT
 import machinetalk.protobuf.types_pb2 as TYPES
+import threading
+import uuid
+import zmq
 
+from MKCommand import *
 from MKError   import *
 from MKService import *
 
@@ -23,7 +29,7 @@ class Pin(object):
         # make sure type is set before calling setValue()
         self.setValue(container)
 
-        print("%s[%d]: %s" % (self.name, self.handle, self.value))
+        #print("%s[%d]: %s" % (self.name, self.handle, self.value))
 
     def setValue(self, container):
         self.value = PinValue[self.type](container)
@@ -47,6 +53,9 @@ class ComponentManualToolChange(object):
             return True
         return False
 
+    def getPin(self, name):
+        return self.pinName.get(name)
+
     def pinValue(self, name, default):
         pin = self.pinName.get(name)
         if pin:
@@ -54,13 +63,15 @@ class ComponentManualToolChange(object):
         return default
     
     def changeTool(self):
-        print("changeTool: %s/%s" % (self.pinValue('change', False), self.pinValue('changed', False)))
         return self.pinValue('change', False) and not self.pinValue('changed', False)
+
+    def toolChanged(self):
+        return not self.pinValue('change', False) and self.pinValue('changed', False)
 
     def toolNumber(self):
         return self.pinValue('number', 0)
 
-class MKServiceHal(MKServiceSubscribe):
+class MKServiceHalStatus(MKServiceSubscribe):
     '''Gets and displayes the emc status'''
 
     def __init__(self, context, name, properties):
@@ -76,6 +87,7 @@ class MKServiceHal(MKServiceSubscribe):
         return 'halrcomp'
 
     def process(self, container):
+        #print(container)
         if container.type ==  TYPES.MT_HALRCOMP_ERROR:
             # this will be the last time the service sends a message
             print("ERROR: %s" % container.note);
@@ -87,10 +99,49 @@ class MKServiceHal(MKServiceSubscribe):
         elif container.type == TYPES.MT_HALRCOMP_INCREMENTAL_UPDATE and self.toolChange:
             for pin in container.pin:
                 if not self.toolChange.updatePin(pin):
-                    print(pin)
+                    #print(pin)
+                    pass
         else:
             print(container)
 
         if self.toolChange:
             self.notifyObservers(self.toolChange)
 
+
+    def toolChanged(self, service, value):
+        pin = self.toolChange.getPin('changed')
+
+        p = OBJECT.Pin()
+        p.handle = pin.handle
+        p.type   = pin.type
+        p.halbit = value
+
+        cmd = MKCommand(TYPES.MT_HALRCOMP_SET)
+        cmd.msg.pin.extend([p])
+
+        service.sendCommand(cmd)
+
+class MKServiceHalCommand(MKService):
+    def __init__(self, context, name, properties):
+        MKService.__init__(self, name, properties)
+        self.identity = uuid.uuid1()
+        self.socket = context.socket(zmq.DEALER)
+        self.socket.identity = str(self.identity).encode()
+        self.socket.connect(self.dsn)
+        self.commandID = itertools.count()
+        self.locked = threading.Lock()
+
+    def newTicket(self):
+        with self.locked:
+            return next(self.commandID)
+
+    def sendCommand(self, msg):
+        ticket = self.newTicket()
+        msg.msg.ticket = ticket
+        msg.msg.serial = ticket
+        buf = msg.serializeToString()
+        msg.msgSent()
+        self.socket.send(buf)
+
+    def process(self, container):
+        print(container)

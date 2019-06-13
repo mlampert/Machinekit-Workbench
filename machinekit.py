@@ -23,7 +23,8 @@ AxesName     = AxesForward
 MKServiceRegister = {
         'command'   : MKServiceCommand,
         'error'     : MKServiceError,
-        'halrcomp'  : MKServiceHal,
+        'halrcmd'   : MKServiceHalCommand,
+        'halrcomp'  : MKServiceHalStatus,
         'status'    : MKServiceStatus,
         '': None
         }
@@ -66,26 +67,55 @@ class Endpoint(object):
 class ManualToolChangeNotifier(object):
     def __init__(self, mk):
         self.mk = mk
-        self.service = None
-        self.connector = None
-        self.connect(self)
+        self.status = None
+        self.command = None
+        self.connectors = []
+        self.connect()
 
     def disconnect(self):
-        if self.connector:
-            self.connector.disconnect()
-        self.connector = None
-        self.service = None
+        for connector in self.connectors:
+            connector.disconnect()
+        self.connectors = []
+        self.status = None
+        self.command = None
 
     def connect(self):
-        if self.service:
+        if self.status:
             self.disconnect()
-        self.service = mk.connectWith('halrcomp')
-        if self.service:
-            self.connector = ServiceConnector(self.service, self)
+        if self.command:
+            self.disconnect()
+        self.status = self.mk.connectWith('halrcomp')
+        self.command = self.mk.connectWith('halrcmd')
+        if self.status and self.command:
+            self.connectors.append(ServiceConnector(self.status, self))
+            self.connectors.append(ServiceConnector(self.command, self))
+        else:
+            self.status = None
+            self.command = None
 
     def changed(self, service, tc):
         if tc.changeTool():
-            print('now what?')
+            if 0 == tc.toolNumber():
+                print("TC clear")
+                service.toolChanged(self.command, True)
+            else:
+                mb = PySide.QtGui.QMessageBox()
+                mb.setWindowIcon(IconResource('machinekiticon.png'))
+                mb.setWindowTitle('Machinekit')
+                mb.setText( "Insert tool #%d and then press OK." % tc.toolNumber())
+                mb.setIcon(PySide.QtGui.QMessageBox.Warning)
+                mb.setStandardButtons(PySide.QtGui.QMessageBox.Ok | PySide.QtGui.QMessageBox.Abort)
+                if PySide.QtGui.QMessageBox.Ok == mb.exec_():
+                    print("TC confirm")
+                    service.toolChanged(self.command, True)
+                else:
+                    print("TC abort")
+                    self.mk.connectWith('command').sendCommand(MKCommandTaskAbort())
+        elif tc.toolChanged():
+            print('TC reset')
+            service.toolChanged(self.command, False)
+        else:
+            print('TC -')
 
 class Machinekit(PySide.QtCore.QThread):
     def __init__(self, uuid, properties):
@@ -127,7 +157,7 @@ class Machinekit(PySide.QtCore.QThread):
                 self.thread.start()
         if service == b'status':
             s = self.connectWith(service.decode())
-        if service == b'halrcomp' and self.manualToolChangeNotifier:
+        if service in [b'halrcmd', b'halrcomp'] and self.manualToolChangeNotifier:
             self.manualToolChangeNotifier.connect()
 
     def startManualToolChangeNotifier(self):
@@ -138,7 +168,7 @@ class Machinekit(PySide.QtCore.QThread):
         with self.lock:
             for epn, ep in self.endpoint.items():
                 if ep.name == name:
-                    if epn == 'halrcomp' and self.manualToolChangeNotifier:
+                    if epn in [b'halrcmd', 'halrcomp'] and self.manualToolChangeNotifier:
                         self.manualToolChangeNotifier.disconnect()
                     del self.endpoint[epn]
                     break
@@ -262,22 +292,22 @@ def FileResource(filename):
 def IconResource(filename):
     return PySide.QtGui.QIcon(FileResource(filename))
 
-def taskMode(service, mode):
+def taskMode(service, mode, force):
     m = service['task.task.mode']
     if m is None:
         m = service['status.task.task.mode'] 
-    if m != mode:
+    if m != mode or force:
         return [MKCommandTaskSetMode(mode)]
     return []
 
-def taskModeAuto(service):
-    return taskMode(service, STATUS.EmcTaskModeType.Value('EMC_TASK_MODE_AUTO'))
+def taskModeAuto(service, force=False):
+    return taskMode(service, STATUS.EmcTaskModeType.Value('EMC_TASK_MODE_AUTO'), force)
 
-def taskModeMDI(service):
-    return taskMode(service, STATUS.EmcTaskModeType.Value('EMC_TASK_MODE_MDI'))
+def taskModeMDI(service, force=False):
+    return taskMode(service, STATUS.EmcTaskModeType.Value('EMC_TASK_MODE_MDI'), force)
 
-def taskModeManual(service):
-    return taskMode(service, STATUS.EmcTaskModeType.Value('EMC_TASK_MODE_MANUAL'))
+def taskModeManual(service, force=False):
+    return taskMode(service, STATUS.EmcTaskModeType.Value('EMC_TASK_MODE_MANUAL'), force)
 
 def Estop(mk):
     status = mk.connectWith('status')

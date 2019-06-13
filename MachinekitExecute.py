@@ -87,7 +87,7 @@ class Execute(object):
                 self.title.setMaximumHeight(bs.height())
                 self.ob.setMaximumSize(bs)
                 #tb.setMaximumHeight(bs.height())
-                print(bs)
+                #print(bs)
 
             self.ui.setTitleBarWidget(tb)
 
@@ -163,6 +163,9 @@ class Execute(object):
     def isPaused(self):
         return self.isState('EMC_TASK_INTERP_PAUSED')
 
+    def remoteFilePath(self, path = 'FreeCAD.ngc'):
+        return "%s/%s" % (self['status.config.remote_path'], path)
+
     def executeUpload(self):
         if self.job:
             currTool = None
@@ -187,9 +190,8 @@ class Execute(object):
                     filename = 'FreeCAD.ngc'
                     ftp.storbinary("STOR %s" % filename, buf)
                     sequence = machinekit.taskModeAuto(self)
-                    path = "%s/%s" % (self['status.config.remote_path'], filename)
                     sequence.append(MKCommandTaskReset(False))
-                    sequence.append(MKCommandOpenFile(path, False))
+                    sequence.append(MKCommandOpenFile(self.remoteFilePath(filename), False))
                     self.cmd.sendCommands(sequence)
                 else:
                     print('No endpoint found')
@@ -197,7 +199,12 @@ class Execute(object):
                 print('Post processing failed')
 
     def executeRun(self):
-        sequence = machinekit.taskModeAuto(self)
+        sequence = machinekit.taskModeMDI(self)
+        sequence.append(MKCommandTaskExecute('M6 T0'))
+        sequence.extend(machinekit.taskModeAuto(self, True))
+        # Want to reset the interpreter, just to make sure we really start from scratch.
+        #sequence.append(MKCommandTaskReset(False))
+        #sequence.append(MKCommandOpenFile(self['status.task.file'], False))
         sequence.append(MKCommandTaskRun(False))
         self.cmd.sendCommands(sequence)
 
