@@ -1,5 +1,6 @@
 import FreeCAD
 import FreeCADGui
+import PathScripts.PathGeom as PathGeom
 import machinekit
 import machinetalk.protobuf.status_pb2 as STATUS
 
@@ -60,6 +61,10 @@ class Jog(object):
         setupSetButton(self.ui.setZ0,     'Z',         None, buttonWidth)
         setupSetButton(self.ui.setXYZ0, 'XYZ',         None, buttonWidth)
 
+        self.jogGoto = None
+
+        FreeCADGui.Selection.addObserver(self)
+
         if self.isConnected():
             self.setupUI()
         else:
@@ -80,7 +85,7 @@ class Jog(object):
         return None
 
     def terminate(self):
-        pass
+        FreeCADGui.Selection.removeObserver(self)
 
     def isConnected(self, topics=None):
         if topics is None:
@@ -168,6 +173,26 @@ class Jog(object):
                 sequence = [[cmd] for cmd in machinekit.taskModeManual(self)]
                 sequence.append(jog)
                 self.cmd.sendCommandSequence(sequence)
+
+    # Selection.Observer
+    def addSelection(self, doc, obj, sub, pnt):
+        if self.ui.jogGoto.isChecked():
+            x = pnt[0]
+            y = pnt[1]
+            z = pnt[2]
+            mkx = self.displayPos('x')
+            mky = self.displayPos('y')
+            mkz = self.displayPos('z')
+            if PathGeom.isRoughly(x, mkx) and PathGeom.isRoughly(y, mky):
+                # only jog the Z axis if XY already match
+                task = "G0 X%f Y%f Z%f" % (x, y, z)
+            else:
+                # by default we just jog X & Y
+                task = "G0 X%f Y%f" % (x, y)
+
+            sequence = machinekit.taskModeMDI(self)
+            sequence.append(MKCommandTaskExecute(task))
+            self.cmd.sendCommands(sequence)
 
     def updateDRO(self, connected, powered):
         def updateAxisWidget(w, pos, homed):
