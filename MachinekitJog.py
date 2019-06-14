@@ -61,6 +61,9 @@ class Jog(object):
         setupSetButton(self.ui.setZ0,     'Z',         None, buttonWidth)
         setupSetButton(self.ui.setXYZ0, 'XYZ',         None, buttonWidth)
 
+        self.ui.jogContinuous.clicked.connect(self.setJoggingMode)
+        self.setJoggingMode()
+
         self.jogGoto = None
 
         FreeCADGui.Selection.addObserver(self)
@@ -122,6 +125,9 @@ class Jog(object):
 
     def displayPos(self, axis):
         return self["status.motion.position.actual.%s" % axis] - self["status.motion.offset.g5x.%s" % axis]
+
+    def setJoggingMode(self):
+        self.ui.jogDistance.setEnabled(not self.ui.jogContinuous.isChecked())
 
     def jogAxesZero(self, axes):
         jog = []
