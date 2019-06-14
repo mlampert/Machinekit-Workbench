@@ -11,6 +11,7 @@ import machinekit
 import machinetalk.protobuf.status_pb2 as STATUS
 
 from MKCommand import *
+from MKServiceCommand import *
 
 class TreeSelectionObserver(object):
     def __init__(self, notify):
@@ -201,10 +202,8 @@ class Execute(object):
     def executeRun(self):
         sequence = machinekit.taskModeMDI(self)
         sequence.append(MKCommandTaskExecute('M6 T0'))
+        sequence.append(MKCommandWaitUntil(lambda : self['status.io.tool.nr'] <= 0))
         sequence.extend(machinekit.taskModeAuto(self, True))
-        # Want to reset the interpreter, just to make sure we really start from scratch.
-        #sequence.append(MKCommandTaskReset(False))
-        #sequence.append(MKCommandOpenFile(self['status.task.file'], False))
         sequence.append(MKCommandTaskRun(False))
         self.cmd.sendCommands(sequence)
 

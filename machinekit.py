@@ -339,7 +339,7 @@ def Home(mk):
         batch = order[key]
         sequence.append([MKCommandAxisHome(index, True) for index in batch])
         for index in batch:
-            sequence.append([MKCommandPauseUntil(lambda index=index: status["motion.axis.%d.homed" % index])])
+            sequence.append([MKCommandWaitUntil(lambda index=index: status["motion.axis.%d.homed" % index])])
 
     command.sendCommandSequence(sequence)
 

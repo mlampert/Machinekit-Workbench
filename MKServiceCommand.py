@@ -9,7 +9,7 @@ import zmq
 from MKCommand import *
 from MKService import *
 
-class MKCommandPauseUntil(object):
+class MKCommandWaitUntil(object):
     def __init__(self, condition):
         self.condition = condition
 
@@ -37,7 +37,7 @@ class CommandSequence(object):
         if self.sequence:
             batch = self.sequence.pop(0)
             for command in batch:
-                if type(command) == MKCommandPauseUntil:
+                if type(command) == MKCommandWaitUntil:
                     self.wait = command
                 else:
                     self.msgs.append(command)
