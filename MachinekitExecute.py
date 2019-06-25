@@ -36,6 +36,8 @@ class EventFilter(PySide.QtCore.QObject):
         return PySide.QtCore.QObject.eventFilter(self, obj, event)
 
 class Execute(object):
+    RemoteFilename = 'FreeCAD.ngc'
+
     def __init__(self, mk):
         self.mk = mk
         self.ui = FreeCADGui.PySideUic.loadUi(machinekit.FileResource('execute.ui'), self)
@@ -112,6 +114,7 @@ class Execute(object):
         #self.eventFilter = EventFilter()
         #self.ui.installEventFilter(self.eventFilter)
 
+        self.updateJob()
         self.updateUI()
         machinekit.execute = self
 
@@ -164,7 +167,9 @@ class Execute(object):
     def isPaused(self):
         return self.isState('EMC_TASK_INTERP_PAUSED')
 
-    def remoteFilePath(self, path = 'FreeCAD.ngc'):
+    def remoteFilePath(self, path = None):
+        if path is None:
+            path = self.RemoteFilename
         return "%s/%s" % (self['status.config.remote_path'], path)
 
     def executeUpload(self):
@@ -183,17 +188,18 @@ class Execute(object):
             post = PathPost.CommandPathPost()
             (fail, gcode) = post.exportObjectsWith(postlist, job, False)
             if not fail:
-                buf = io.BytesIO(gcode.encode())
+                preamble = "(FreeCAD.Job: %s)\n(FreeCAD.File: %s)\n" % (job.Name, job.Document.FileName)
+                buf = io.BytesIO((preamble + gcode).encode())
                 endpoint = self.mk.endpoint.get('file')
                 if endpoint:
                     ftp = ftplib.FTP()
                     ftp.connect(endpoint.address(), endpoint.port())
                     ftp.login()
-                    filename = 'FreeCAD.ngc'
-                    ftp.storbinary("STOR %s" % filename, buf)
+                    ftp.storbinary("STOR %s" % self.RemoteFilename, buf)
+                    ftp.quit()
                     sequence = machinekit.taskModeAuto(self)
                     sequence.append(MKCommandTaskReset(False))
-                    sequence.append(MKCommandOpenFile(self.remoteFilePath(filename), False))
+                    sequence.append(MKCommandOpenFile(self.remoteFilePath(), False))
                     self.cmd.sendCommands(sequence)
                     self.mk.setJob(job)
                 else:
@@ -251,14 +257,38 @@ class Execute(object):
         connected = self.isConnected()
         powered = self.mk.isPowered()
 
-        title = '-.-'
-        if connected and powered:
-            path = self['status.task.file']
-            if path:
-                title = path.split('/')[-1]
-        self.title.setText(title)
         self.updateExecute(connected, powered)
         self.ui.dockWidgetContents.setEnabled(powered)
 
+    def updateJob(self):
+        title = '-.-'
+        path = self['status.task.file']
+        if path:
+            title = path.split('/')[-1]
+            if self.remoteFilePath() == path:
+                buf = io.BytesIO()
+                endpoint = self.mk.endpoint.get('file')
+                if endpoint:
+                    ftp = ftplib.FTP()
+                    ftp.connect(endpoint.address(), endpoint.port())
+                    ftp.login()
+                    ftp.retrbinary("RETR %s" % self.RemoteFilename, buf.write)
+                    ftp.quit()
+                    buf.seek(0)
+                    line1 = buf.readline().decode()
+                    line2 = buf.readline().decode()
+                    if line1.startswith('(FreeCAD.Job: ') and line2.startswith('(FreeCAD.File: '):
+                        title    = line1[14:-2]
+                        filename = line2[15:-2]
+                        for docName, doc in FreeCAD.listDocuments().items():
+                            if doc.FileName == filename:
+                                job = doc.getObject(title)
+                                if job:
+                                    self.mk.setJob(job)
+                                    title = job.Label
+        self.title.setText(title)
+
     def changed(self, service, updated):
+        if service.topicName() == 'status.task' and 'file' in updated:
+            self.updateJob()
         self.updateUI()
