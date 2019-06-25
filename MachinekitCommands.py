@@ -125,8 +125,7 @@ ToolbarTools = ['MachinekitCommandHud', 'MachinekitCommandJog', 'MachinekitComma
 MenuList     = ["MachinekitCommandEstop", "MachinekitCommandHome", "Separator"] + ToolbarTools
 
 def Activated():
-    for mk in machinekit.Instances():
-        mk.startManualToolChangeNotifier()
+    machinekit.Start()
 
 def Deactivated():
     pass

@@ -70,7 +70,6 @@ class ManualToolChangeNotifier(object):
         self.status = None
         self.command = None
         self.connectors = []
-        self.connect()
 
     def disconnect(self):
         for connector in self.connectors:
@@ -80,18 +79,18 @@ class ManualToolChangeNotifier(object):
         self.command = None
 
     def connect(self):
-        if self.status:
+        if self.status or self.command:
             self.disconnect()
-        if self.command:
-            self.disconnect()
-        self.status = self.mk.connectWith('halrcomp')
-        self.command = self.mk.connectWith('halrcmd')
-        if self.status and self.command:
+        status = self.mk.connectWith('halrcomp')
+        command = self.mk.connectWith('halrcmd')
+        if status and command:
+            self.status = status
+            self.command = command
             self.connectors.append(ServiceConnector(self.status, self))
             self.connectors.append(ServiceConnector(self.command, self))
-        else:
-            self.status = None
-            self.command = None
+
+    def isConnected(self):
+        return self.status and self.command and self.connectors
 
     def changed(self, service, msg):
         if msg.changeTool():
@@ -104,7 +103,6 @@ class ManualToolChangeNotifier(object):
                     msg = ["Insert tool #%d" % tc.ToolNumber, "<i>\"%s\"</i>" % tc.Label]
                 else:
                     msg = ["Insert tool #%d" % msg.toolNumber()]
-                print("msg = '%s'" % msg)
                 mb = PySide.QtGui.QMessageBox()
                 mb.setWindowIcon(IconResource('machinekiticon.png'))
                 mb.setWindowTitle('Machinekit')
@@ -147,7 +145,7 @@ class Machinekit(PySide.QtCore.QThread):
         self.quit = False
         self.timeout = 100
         self.thread = None
-        self.manualToolChangeNotifier = None
+        self.manualToolChangeNotifier = ManualToolChangeNotifier(self)
         self.job = None
 
     def __str__(self):
@@ -173,18 +171,12 @@ class Machinekit(PySide.QtCore.QThread):
                 self.thread.start()
         if service == b'status':
             s = self.connectWith(service.decode())
-        if service in [b'halrcmd', b'halrcomp'] and self.manualToolChangeNotifier:
-            self.manualToolChangeNotifier.connect()
-
-    def startManualToolChangeNotifier(self):
-        if self.manualToolChangeNotifier is None:
-            self.manualToolChangeNotifier = ManualToolChangeNotifier(self)
 
     def _removeService(self, name):
         with self.lock:
             for epn, ep in self.endpoint.items():
                 if ep.name == name:
-                    if epn in [b'halrcmd', 'halrcomp'] and self.manualToolChangeNotifier:
+                    if epn in [b'halrcmd', 'halrcomp']:
                         self.manualToolChangeNotifier.disconnect()
                     del self.endpoint[epn]
                     break
@@ -263,6 +255,8 @@ class Machinekit(PySide.QtCore.QThread):
         return self.job
 
 class ServiceMonitor(object):
+    _Instance = None
+
     def __init__(self):
         self.zc = zeroconf.Zeroconf()
         self.quit = False
@@ -296,14 +290,31 @@ class ServiceMonitor(object):
             print(mk)
 
     def instances(self, services):
-        return [mk for mkn, mk in self.machinekit.items() if mk.providesServices(services)]
+        return [mk for mkn, mk in self.machinekit.items() if services is None or mk.providesServices(services)]
 
-_ServiceMonitor = ServiceMonitor()
+    @classmethod
+    def Start(cls):
+        if cls._Instance is None:
+            cls._Instance = ServiceMonitor()
+
+    @classmethod
+    def Instance(cls):
+        cls.Start()
+        return cls._Instance
+
+def Start():
+    ServiceMonitor.Start()
 
 def Instances(services = None):
-    if services is None:
-        return _ServiceMonitor.instances([])
-    return _ServiceMonitor.instances(services)
+    # this function gets called periodically through the MachineCommands observers
+    # we'll abuse it to connect manual tool changer, which has to happen in the main
+    # thread - otherwise the notifications vanish in thin air
+    mks = ServiceMonitor.Instance().instances(services)
+    for mk in mks:
+        mtc = mk.manualToolChangeNotifier
+        if not mtc.isConnected():
+            mtc.connect()
+    return mks
 
 def PathSource():
     return os.path.dirname(__file__)
