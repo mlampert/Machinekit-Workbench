@@ -168,10 +168,11 @@ class Execute(object):
         return "%s/%s" % (self['status.config.remote_path'], path)
 
     def executeUpload(self):
-        if self.job:
+        job = self.job
+        if job:
             currTool = None
             postlist = []
-            for obj in self.job.Operations.Group:
+            for obj in job.Operations.Group:
                 tc = PathUtil.toolControllerForOp(obj)
                 if tc is not None:
                     if tc.ToolNumber != currTool:
@@ -180,7 +181,7 @@ class Execute(object):
                 postlist.append(obj)
 
             post = PathPost.CommandPathPost()
-            (fail, gcode) = post.exportObjectsWith(postlist, self.job, False)
+            (fail, gcode) = post.exportObjectsWith(postlist, job, False)
             if not fail:
                 buf = io.BytesIO(gcode.encode())
                 endpoint = self.mk.endpoint.get('file')
@@ -194,6 +195,7 @@ class Execute(object):
                     sequence.append(MKCommandTaskReset(False))
                     sequence.append(MKCommandOpenFile(self.remoteFilePath(filename), False))
                     self.cmd.sendCommands(sequence)
+                    self.mk.setJob(job)
                 else:
                     print('No endpoint found')
             else:

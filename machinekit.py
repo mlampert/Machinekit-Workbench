@@ -93,16 +93,23 @@ class ManualToolChangeNotifier(object):
             self.status = None
             self.command = None
 
-    def changed(self, service, tc):
-        if tc.changeTool():
-            if 0 == tc.toolNumber():
+    def changed(self, service, msg):
+        if msg.changeTool():
+            if 0 == msg.toolNumber():
                 print("TC clear")
                 service.toolChanged(self.command, True)
             else:
+                tc = self.getTC(msg.toolNumber())
+                if tc:
+                    msg = ["Insert tool #%d" % tc.ToolNumber, "<i>\"%s\"</i>" % tc.Label]
+                else:
+                    msg = ["Insert tool #%d" % msg.toolNumber()]
+                print("msg = '%s'" % msg)
                 mb = PySide.QtGui.QMessageBox()
                 mb.setWindowIcon(IconResource('machinekiticon.png'))
                 mb.setWindowTitle('Machinekit')
-                mb.setText( "Insert tool #%d and then press OK." % tc.toolNumber())
+                mb.setTextFormat(PySide.QtCore.Qt.TextFormat.RichText)
+                mb.setText("<div align='center'>%s</div>" % '<br/>'.join(msg))
                 mb.setIcon(PySide.QtGui.QMessageBox.Warning)
                 mb.setStandardButtons(PySide.QtGui.QMessageBox.Ok | PySide.QtGui.QMessageBox.Abort)
                 if PySide.QtGui.QMessageBox.Ok == mb.exec_():
@@ -111,11 +118,19 @@ class ManualToolChangeNotifier(object):
                 else:
                     print("TC abort")
                     self.mk.connectWith('command').sendCommand(MKCommandTaskAbort())
-        elif tc.toolChanged():
+        elif msg.toolChanged():
             print('TC reset')
             service.toolChanged(self.command, False)
         else:
             print('TC -')
+
+    def getTC(self, nr):
+        job = self.mk.getJob()
+        if job:
+            for tc in job.ToolController:
+                if tc.ToolNumber == nr:
+                    return tc
+        return None
 
 class Machinekit(PySide.QtCore.QThread):
     def __init__(self, uuid, properties):
@@ -133,6 +148,7 @@ class Machinekit(PySide.QtCore.QThread):
         self.timeout = 100
         self.thread = None
         self.manualToolChangeNotifier = None
+        self.job = None
 
     def __str__(self):
         with self.lock:
@@ -239,6 +255,12 @@ class Machinekit(PySide.QtCore.QThread):
 
     def isHomed(self):
         return self.isPowered() and all([axis.homed for axis in self['status.motion.axis']])
+
+    def setJob(self, job):
+        self.job = job
+
+    def getJob(self):
+        return self.job
 
 class ServiceMonitor(object):
     def __init__(self):
