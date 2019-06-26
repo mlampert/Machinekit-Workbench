@@ -8,6 +8,7 @@ import ftplib
 import io
 import ftplib
 import machinekit
+import machinetalk.protobuf.motcmds_pb2 as MOTCMDS
 import machinetalk.protobuf.status_pb2 as STATUS
 
 from MKCommand import *
@@ -240,7 +241,7 @@ class Execute(object):
             else:
                 self.ui.load.setEnabled(False)
                 self.ui.run.setEnabled(False)
-                self.ui.step.setEnabled(self.isPaused())
+                self.ui.step.setEnabled(self['status.motion.type'] == MOTCMDS.MotionType.Value('_EMC_MOTION_TYPE_NONE'))
                 self.ui.pause.setEnabled(True)
                 if self.ui.pause.isChecked() != self.isPaused():
                     self.ui.pause.setChecked(self.isPaused())
