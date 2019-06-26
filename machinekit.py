@@ -232,6 +232,7 @@ class Machinekit(PySide.QtCore.QThread):
                             else:
                                 # ignore all ping messages for now
                                 if rx.type != TYPES.MT_PING:
+                                    #print(rx)
                                     service.process(rx);
                         else:
                             #print('-', name)
@@ -306,15 +307,20 @@ def Start():
     ServiceMonitor.Start()
 
 def Instances(services = None):
+    return ServiceMonitor.Instance().instances(services)
+
+def Any():
     # this function gets called periodically through the MachineCommands observers
     # we'll abuse it to connect manual tool changer, which has to happen in the main
-    # thread - otherwise the notifications vanish in thin air
-    mks = ServiceMonitor.Instance().instances(services)
-    for mk in mks:
-        mtc = mk.manualToolChangeNotifier
-        if not mtc.isConnected():
-            mtc.connect()
-    return mks
+    # thread - otherwise the notifications vanish into thin air
+    mks = ServiceMonitor.Instance().instances(None)
+    if mks:
+        for mk in mks:
+            mtc = mk.manualToolChangeNotifier
+            if not mtc.isConnected():
+                mtc.connect()
+        return mks[0]
+    return None
 
 def PathSource():
     return os.path.dirname(__file__)

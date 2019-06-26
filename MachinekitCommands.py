@@ -14,7 +14,7 @@ class MachinekitCommand(object):
         self.services = services
 
     def IsActive(self):
-        return len(machinekit.Instances()) > 0
+        return not machinekit.Any() is None
 
     def Activated(self):
         global Dock
@@ -105,8 +105,8 @@ class MachinekitCommandHome(MachinekitCommand):
         super(self.__class__, self).__init__(['command', 'status'])
 
     def IsActive(self):
-        if super(self.__class__, self).IsActive():
-            mk = machinekit.Instances()[0]
+        mk = machinekit.Any()
+        if mk:
             return mk.isPowered() and not mk.isHomed()
         return False
 
