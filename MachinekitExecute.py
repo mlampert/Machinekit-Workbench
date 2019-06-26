@@ -103,6 +103,9 @@ class Execute(object):
         self.ui.step.clicked.connect(self.executeStep)
         self.ui.pause.clicked.connect(self.executePause)
         self.ui.stop.clicked.connect(self.executeStop)
+        self.ui.scaleInt.valueChanged.connect(self.executeScaleInt)
+        self.ui.scaleInt.sliderReleased.connect(self.executeScaleVal)
+        self.ui.scaleVal.editingFinished.connect(self.executeScaleVal)
 
         self.ui.status.setText('')
         rect = self.ui.geometry()
@@ -115,6 +118,7 @@ class Execute(object):
         #self.eventFilter = EventFilter()
         #self.ui.installEventFilter(self.eventFilter)
 
+        self.updateOverride()
         self.updateJob()
         self.updateUI()
         machinekit.execute = self
@@ -230,6 +234,17 @@ class Execute(object):
     def executeStop(self):
         self.cmd.sendCommand(MKCommandTaskAbort())
 
+    def executeScaleInt(self):
+        percent = self.ui.scaleInt.value()
+        scale = percent / 100.0
+        self.ui.scaleVal.blockSignals(True)
+        self.ui.scaleVal.setValue(scale)
+        self.ui.scaleVal.blockSignals(False)
+
+    def executeScaleVal(self):
+        scale = self.ui.scaleVal.value()
+        self.cmd.sendCommand(MKCommandTrajSetScale(scale))
+
     def updateExecute(self, connected, powered):
         if connected and powered:
             if self.isIdle():
@@ -260,6 +275,18 @@ class Execute(object):
 
         self.updateExecute(connected, powered)
         self.ui.dockWidgetContents.setEnabled(powered)
+        self.ui.override.setEnabled(powered and connected and self['status.motion.feed.override'])
+
+    def updateOverride(self):
+        self.ui.scaleInt.blockSignals(True)
+        self.ui.scaleInt.setMinimum(self['status.config.override.feed.min'] * 100)
+        self.ui.scaleInt.setMaximum(self['status.config.override.feed.max'] * 100)
+        self.ui.scaleInt.setSliderPosition(self['status.motion.feed.rate'] * 100)
+        self.ui.scaleInt.blockSignals(False)
+
+        self.ui.scaleVal.blockSignals(True)
+        self.ui.scaleVal.setValue(self['status.motion.feed.rate'])
+        self.ui.scaleVal.blockSignals(False)
 
     def updateJob(self):
         title = '-.-'
@@ -292,4 +319,9 @@ class Execute(object):
     def changed(self, service, updated):
         if service.topicName() == 'status.task' and 'file' in updated:
             self.updateJob()
+
+        if service.topicName() == 'status.motion' and 'feed.rate' in updated:
+            self.updateOverride()
+
         self.updateUI()
+        #print(service.topicName(), updated)

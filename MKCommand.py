@@ -142,3 +142,13 @@ class MKCommandAxisJog(MKCommandExecute):
             self.msg.emc_command_params.distance = distance
         self.msg.emc_command_params.index = index
         self.msg.emc_command_params.velocity = velocity
+
+
+class MKCommandTrajSetScale(MKCommand):
+    def __init__(self, scale, rapid=False):
+        if rapid:
+            MKCommand.__init__(self, TYPES.MT_EMC_TRAJ_SET_RAPID_SCALE)
+        else:
+            MKCommand.__init__(self, TYPES.MT_EMC_TRAJ_SET_SCALE)
+        self.msg.emc_command_params.scale = scale
+
