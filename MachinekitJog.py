@@ -223,6 +223,7 @@ class Jog(object):
     def updateUI(self):
         connected = self.isConnected()
         powered = self.mk.isPowered()
+        isIdle = self['status.interp.state'] == STATUS.EmcInterpStateType.Value('EMC_TASK_INTERP_IDLE')
 
         if connected:
             self.ui.setWindowTitle(self['status.config.name'])
@@ -230,7 +231,7 @@ class Jog(object):
                 self.setupUI()
 
         self.updateDRO(connected, powered)
-        self.ui.dockWidgetContents.setEnabled(powered)
+        self.ui.dockWidgetContents.setEnabled(powered and isIdle)
 
 
     def changed(self, service, msg):
