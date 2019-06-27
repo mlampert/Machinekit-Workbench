@@ -81,11 +81,9 @@ class ManualToolChangeNotifier(object):
     def connect(self):
         if self.status or self.command:
             self.disconnect()
-        status = self.mk.connectWith('halrcomp')
-        command = self.mk.connectWith('halrcmd')
-        if status and command:
-            self.status = status
-            self.command = command
+        if self.mk.providesServices(['halrcomp', 'halrcmd']):
+            self.status = self.mk.connectWith('halrcomp')
+            self.command = self.mk.connectWith('halrcmd')
             self.connectors.append(ServiceConnector(self.status, self))
             self.connectors.append(ServiceConnector(self.command, self))
 
@@ -95,7 +93,7 @@ class ManualToolChangeNotifier(object):
     def changed(self, service, msg):
         if msg.changeTool():
             if 0 == msg.toolNumber():
-                print("TC clear")
+                #print("TC clear")
                 service.toolChanged(self.command, True)
             else:
                 tc = self.getTC(msg.toolNumber())
@@ -111,16 +109,17 @@ class ManualToolChangeNotifier(object):
                 mb.setIcon(PySide.QtGui.QMessageBox.Warning)
                 mb.setStandardButtons(PySide.QtGui.QMessageBox.Ok | PySide.QtGui.QMessageBox.Abort)
                 if PySide.QtGui.QMessageBox.Ok == mb.exec_():
-                    print("TC confirm")
+                    #print("TC confirm")
                     service.toolChanged(self.command, True)
                 else:
-                    print("TC abort")
+                    #print("TC abort")
                     self.mk.connectWith('command').sendCommand(MKCommandTaskAbort())
         elif msg.toolChanged():
-            print('TC reset')
+            #print('TC reset')
             service.toolChanged(self.command, False)
         else:
-            print('TC -')
+            #print('TC -')
+            pass
 
     def getTC(self, nr):
         job = self.mk.getJob()

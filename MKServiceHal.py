@@ -94,7 +94,7 @@ class MKServiceHalStatus(MKServiceSubscribe):
         elif container.type == TYPES.MT_HALRCOMP_FULL_UPDATE:
             for comp in container.comp:
                 if comp.name == 'hal_manualtoolchange':
-                    print('got tool change')
+                    print('manual tool change detected')
                     self.toolChange = ComponentManualToolChange(comp)
         elif container.type == TYPES.MT_HALRCOMP_INCREMENTAL_UPDATE and self.toolChange:
             for pin in container.pin:

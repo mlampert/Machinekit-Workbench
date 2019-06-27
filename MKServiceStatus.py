@@ -13,7 +13,7 @@ class MKServiceContainer(MKObserverable):
             attr = self.__getattribute__(path[0])
             return returnAttribute(attr, path[1:])
         except:
-            print("path = %s" % path)
+            print("unknown container path = %s (%s)" % (path, self))
             raise
 
 class minmax(MKServiceContainer):
