@@ -129,7 +129,46 @@ class ManualToolChangeNotifier(object):
                     return tc
         return None
 
-class Machinekit(PySide.QtCore.QThread):
+class _Thread(PySide.QtCore.QThread):
+    def __init__(self, mk):
+        super(_Thread, self).__init__()
+        self.mk = mk
+        self.timeout = 100
+
+    def run(self):
+        print('thread start')
+        while not self.mk.quit:
+            s = dict(self.mk.poller.poll(self.timeout))
+            if s:
+                with self.mk.lock:
+                    for name, service in self.mk.service.items():
+                        if service.socket in s:
+                            #print('+', name)
+                            msg = None
+                            rsp = None
+                            rx = MESSAGE.Container()
+                            try:
+                                msg = service.receiveMessage()
+                                rx.ParseFromString(msg)
+                            except Exception as e:
+                                print("%s exception: %s" % (service.name, e))
+                                print("    msg = '%s'" % msg)
+                            else:
+                                # ignore all ping messages for now
+                                if rx.type != TYPES.MT_PING:
+                                    #print(rx)
+                                    service.process(rx);
+                        else:
+                            #print('-', name)
+                            pass
+            with self.mk.lock:
+                for name, service in self.mk.service.items():
+                    service.ping()
+
+        print('thread stop')
+
+
+class Machinekit(object):
     def __init__(self, uuid, properties):
         super(self.__class__, self).__init__()
 
@@ -142,7 +181,6 @@ class Machinekit(PySide.QtCore.QThread):
         self.context = zmq.Context()
         self.poller = zmq.Poller()
         self.quit = False
-        self.timeout = 100
         self.thread = None
         self.manualToolChangeNotifier = ManualToolChangeNotifier(self)
         self.job = None
@@ -166,7 +204,7 @@ class Machinekit(PySide.QtCore.QThread):
             self.endpoint[service.decode()] = Endpoint(service, name, address, port, properties)
             self.quit = False
             if self.thread is None:
-                self.thread = self
+                self.thread = _Thread(self)
                 self.thread.start()
         if service == b'status':
             s = self.connectWith(service.decode())
@@ -181,8 +219,8 @@ class Machinekit(PySide.QtCore.QThread):
                     break
             if 0 == len(self.endpoint):
                 self.quit = True
-        if not self.thread is None:
-            self.thread.join
+        if self.quit and self.thread:
+            self.thread.join()
             self.thread = None
 
     def providesServices(self, services):
@@ -209,38 +247,6 @@ class Machinekit(PySide.QtCore.QThread):
 
     def connectServices(self, services):
         return [self.connectWith(s) for s in services]
-
-    def run(self):
-        print('thread start')
-        while not self.quit:
-            s = dict(self.poller.poll(self.timeout))
-            if s:
-                with self.lock:
-                    for name, service in self.service.items():
-                        if service.socket in s:
-                            #print('+', name)
-                            msg = None
-                            rsp = None
-                            rx = MESSAGE.Container()
-                            try:
-                                msg = service.receiveMessage()
-                                rx.ParseFromString(msg)
-                            except Exception as e:
-                                print("%s exception: %s" % (service.name, e))
-                                print("    msg = '%s'" % msg)
-                            else:
-                                # ignore all ping messages for now
-                                if rx.type != TYPES.MT_PING:
-                                    #print(rx)
-                                    service.process(rx);
-                        else:
-                            #print('-', name)
-                            pass
-            with self.lock:
-                for name, service in self.service.items():
-                    service.ping()
-
-        print('thread stop')
 
     def isPowered(self):
         return (not self['status.io.estop']) and self['status.motion.enabled']
