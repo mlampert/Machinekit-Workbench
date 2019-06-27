@@ -108,7 +108,9 @@ class Hud(object):
         self.hud.show()
 
     def terminate(self):
-        self.status.detach(self)
+        self.mk = None
+        self.connector.separate()
+        self.connector = None
         self.hud.hide()
 
     def displayPos(self, axis):
@@ -125,7 +127,8 @@ class Hud(object):
         self.hud.setPosition(x, y, z, hot)
 
     def changed(self, service, msg):
-        self.updateUI()
+        if self.mk:
+            self.updateUI()
 
 hud = None
 

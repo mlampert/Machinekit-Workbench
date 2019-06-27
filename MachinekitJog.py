@@ -88,7 +88,11 @@ class Jog(object):
         return None
 
     def terminate(self):
+        self.mk = None
         FreeCADGui.Selection.removeObserver(self)
+        for connector in self.connectors:
+            connector.separate()
+        self.connectors = []
 
     def isConnected(self, topics=None):
         if topics is None:
@@ -230,6 +234,7 @@ class Jog(object):
 
 
     def changed(self, service, msg):
-        if 'status' in service.topicName():
-            self.updateUI()
+        if self.mk:
+            if 'status' in service.topicName():
+                self.updateUI()
 

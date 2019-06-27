@@ -133,7 +133,13 @@ class Execute(object):
         return None
 
     def terminate(self):
+        self.mk = None
         FreeCADGui.Selection.removeObserver(self.observer)
+        for connector in self.connectors:
+            connector.separate()
+        self.connectors = []
+        if machinekit.execute == self:
+            machinekit.execute = None
 
     def isConnected(self, topics=None):
         if topics is None:
@@ -317,11 +323,12 @@ class Execute(object):
         self.title.setText(title)
 
     def changed(self, service, updated):
-        if service.topicName() == 'status.task' and 'file' in updated:
-            self.updateJob()
+        if self.mk:
+            if service.topicName() == 'status.task' and 'file' in updated:
+                self.updateJob()
 
-        if service.topicName() == 'status.motion' and 'feed.rate' in updated:
-            self.updateOverride()
+            if service.topicName() == 'status.motion' and 'feed.rate' in updated:
+                self.updateOverride()
 
-        self.updateUI()
+            self.updateUI()
         #print(service.topicName(), updated)

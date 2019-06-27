@@ -43,7 +43,7 @@ class ServiceConnector(PySide.QtCore.QObject):
     def changed(self, service, arg):
         self.updated.emit(service, arg)
 
-    def disconnect(self):
+    def separate(self):
         self.updated.disconnect()
 
 class Endpoint(object):
