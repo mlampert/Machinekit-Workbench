@@ -1,6 +1,8 @@
 import FreeCAD
 import FreeCADGui
 import PathScripts.PathGeom as PathGeom
+import PySide.QtCore
+import PySide.QtGui
 import machinekit
 import machinetalk.protobuf.status_pb2 as STATUS
 
@@ -17,6 +19,10 @@ class Jog(object):
         machinekit.jog = self
         self.mk = mk
         self.ui = FreeCADGui.PySideUic.loadUi(machinekit.FileResource('jog.ui'))
+        palette = PySide.QtGui.QPalette()
+        palette.setColor(PySide.QtGui.QPalette.Background, PySide.QtGui.QColor(0xffd75e))
+        self.ui.dockWidgetContents.setAutoFillBackground(True)
+        self.ui.dockWidgetContents.setPalette(palette)
 
         self.connectors = []
         self.services = self.mk.connectServices(['command', 'status'])

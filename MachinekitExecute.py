@@ -42,6 +42,10 @@ class Execute(object):
     def __init__(self, mk):
         self.mk = mk
         self.ui = FreeCADGui.PySideUic.loadUi(machinekit.FileResource('execute.ui'), self)
+        palette = PySide.QtGui.QPalette()
+        palette.setColor(PySide.QtGui.QPalette.Background, PySide.QtGui.QColor(0xffd75e))
+        self.ui.dockWidgetContents.setAutoFillBackground(True)
+        self.ui.dockWidgetContents.setPalette(palette)
 
         self.connectors = []
         self.services = self.mk.connectServices(['command', 'status'])
