@@ -323,7 +323,7 @@ class Execute(object):
                                 job = doc.getObject(title)
                                 if job:
                                     self.mk.setJob(job)
-                                    title = job.Label
+                                    title = "%s.%s" % (job.Document.Label, job.Label)
         self.title.setText(title)
 
     def changed(self, service, updated):

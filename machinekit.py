@@ -22,7 +22,7 @@ AxesBackward = ['x', 'y', 'z', 'a', 'b', 'c', 'u', 'v', 'w']
 AxesName     = AxesForward
 
 
-MKServiceRegister = {
+_MKServiceRegister = {
         'command'   : MKServiceCommand,
         'error'     : MKServiceError,
         'halrcmd'   : MKServiceHalCommand,
@@ -32,6 +32,9 @@ MKServiceRegister = {
         }
 
 class ServiceConnector(PySide.QtCore.QObject):
+    '''Internal class for propagating change notifications from one thread to the main thread (UI).
+    It is important that instances of this class are created in the main thread, otherwise QT's
+    signal mechanism does not propagate the signals properly.'''
     updated = PySide.QtCore.Signal(object, object)
 
     def __init__(self, service, observer):
@@ -48,7 +51,9 @@ class ServiceConnector(PySide.QtCore.QObject):
     def separate(self):
         self.updated.disconnect()
 
-class Endpoint(object):
+class _Endpoint(object):
+    '''POD for describing a service end point.'''
+
     def __init__(self, service, name, addr, prt, properties):
         self.service = service
         self.name = name
@@ -66,7 +71,8 @@ class Endpoint(object):
     def port(self):
         return self.prt
 
-class ManualToolChangeNotifier(object):
+class _ManualToolChangeNotifier(object):
+    '''Class to prompt user to perform a tool change and confirm its completion.'''
     def __init__(self, mk):
         self.mk = mk
         self.status = None
@@ -132,6 +138,8 @@ class ManualToolChangeNotifier(object):
         return None
 
 class _Thread(PySide.QtCore.QThread):
+    '''Internal class to poll for messages from MK. DO NOT USE.'''
+
     def __init__(self, mk):
         super(_Thread, self).__init__()
         self.mk = mk
@@ -171,6 +179,9 @@ class _Thread(PySide.QtCore.QThread):
 
 
 class Machinekit(object):
+    '''Main interface to the services of a MK instance. Tracks the dynamic registration and unregistration of services
+    and prints the error messages to the log stream.'''
+
     def __init__(self, uuid, properties):
         super(self.__class__, self).__init__()
 
@@ -184,7 +195,7 @@ class Machinekit(object):
         self.poller = zmq.Poller()
         self.quit = False
         self.thread = None
-        self.manualToolChangeNotifier = ManualToolChangeNotifier(self)
+        self.manualToolChangeNotifier = _ManualToolChangeNotifier(self)
         self.job = None
         self.error = None
 
@@ -204,7 +215,7 @@ class Machinekit(object):
     def _addService(self, properties, name, address, port):
         service = properties[b'service']
         with self.lock:
-            self.endpoint[service.decode()] = Endpoint(service, name, address, port, properties)
+            self.endpoint[service.decode()] = _Endpoint(service, name, address, port, properties)
             self.quit = False
             if self.thread is None:
                 self.thread = _Thread(self)
@@ -246,7 +257,7 @@ class Machinekit(object):
     def connectWith(self, s):
         with self.lock:
             if not self.service.get(s):
-                cls = MKServiceRegister.get(s)
+                cls = _MKServiceRegister.get(s)
                 if cls is None:
                     print("Error: service %s not supported" % s)
                 else:
@@ -284,7 +295,8 @@ class Machinekit(object):
             sequence.append(MKCommandTaskExecute(cmd))
             command.sendCommands(sequence)
 
-class ServiceMonitor(object):
+class _ServiceMonitor(object):
+    '''Singleton for the zeroconf service discovery. DO NOT USE.'''
     _Instance = None
 
     def __init__(self):
@@ -325,14 +337,15 @@ class ServiceMonitor(object):
     @classmethod
     def Start(cls):
         if cls._Instance is None:
-            cls._Instance = ServiceMonitor()
+            cls._Instance = _ServiceMonitor()
 
     @classmethod
     def Instance(cls):
         cls.Start()
         return cls._Instance
 
-def taskMode(service, mode, force):
+def _taskMode(service, mode, force):
+    '''internal - do not use'''
     m = service['task.task.mode']
     if m is None:
         m = service['status.task.task.mode'] 
@@ -341,25 +354,44 @@ def taskMode(service, mode, force):
     return []
 
 def taskModeAuto(service, force=False):
-    return taskMode(service, STATUS.EmcTaskModeType.Value('EMC_TASK_MODE_AUTO'), force)
+    '''taskModeAuto(service, force=False) ... return a list of commands required to switch to AUTO mode.'''
+    return _taskMode(service, STATUS.EmcTaskModeType.Value('EMC_TASK_MODE_AUTO'), force)
 
 def taskModeMDI(service, force=False):
-    return taskMode(service, STATUS.EmcTaskModeType.Value('EMC_TASK_MODE_MDI'), force)
+    '''taskModeMDI(service, force=False) ... return a list of commands required to switch to MDI mode.'''
+    return _taskMode(service, STATUS.EmcTaskModeType.Value('EMC_TASK_MODE_MDI'), force)
 
 def taskModeManual(service, force=False):
-    return taskMode(service, STATUS.EmcTaskModeType.Value('EMC_TASK_MODE_MANUAL'), force)
+    '''taskModeManual(service, force=False) ... return a list of commands required to switch to MANUAL mode.'''
+    return _taskMode(service, STATUS.EmcTaskModeType.Value('EMC_TASK_MODE_MANUAL'), force)
+
+def PathSource():
+    '''PathSource() ... return the path to the workbench'''
+    return os.path.dirname(__file__)
+
+def FileResource(filename):
+    '''FileResource(filename) ... return the full path of the given resource file.'''
+    return "%s/Resources/%s" % (PathSource(), filename)
+
+def IconResource(filename):
+    '''IconResource(filename) ... return a QtGui.QIcon from the given resource file (which must exist in the Resource directory).'''
+    return PySide.QtGui.QIcon(FileResource(filename))
 
 def Start():
-    ServiceMonitor.Start()
+    '''Start() ... internal function used to start the service discovery.'''
+    _ServiceMonitor.Start()
 
-def Instances(services = None):
-    return ServiceMonitor.Instance().instances(services)
+def Instances(services=None):
+    '''Instances(services=None) ... Answer a list of all discovered Machinekit instances which provide all services listed.
+    If no services are requested all discovered MK instances are returned.'''
+    return _ServiceMonitor.Instance().instances(services)
 
 def Any():
+    '''Any() ... returns a Machinekit instance, if at least one was discovered.'''
     # this function gets called periodically through the MachineCommands observers
     # we'll abuse it to connect manual tool changer, which has to happen in the main
     # thread - otherwise the notifications vanish into thin air
-    mks = ServiceMonitor.Instance().instances(None)
+    mks = _ServiceMonitor.Instance().instances(None)
     if mks:
         for mk in mks:
             mtc = mk.manualToolChangeNotifier
@@ -370,16 +402,8 @@ def Any():
         return mks[0]
     return None
 
-def PathSource():
-    return os.path.dirname(__file__)
-
-def FileResource(filename):
-    return "%s/Resources/%s" % (PathSource(), filename)
-
-def IconResource(filename):
-    return PySide.QtGui.QIcon(FileResource(filename))
-
 def Estop(mk=None):
+    '''Estop(mk=None) ... unlocks estop and toggles power, if no MK instance is provided Any() is used.'''
     if mk is None:
         mk = Any()
     status = mk.connectWith('status')
@@ -392,6 +416,7 @@ def Estop(mk=None):
     command.sendCommands(commands)
 
 def Home(mk=None):
+    '''Home(mk=None) ... homes all axis, if no MK instance is provided Any() is used.'''
     if mk is None:
         mk = Any()
     status = mk.connectWith('status')
@@ -418,10 +443,13 @@ def Home(mk=None):
     command.sendCommandSequence(sequence)
 
 def MDI(cmd, mk=None):
+    '''MID(cmd, mk=None) ... executes cmd on the provided MK instance, if no MK is provided Any() is used.'''
     if mk is None:
         mk = Any()
     mk.mdi(cmd)
 
+
+# these are for debugging and development - do not use
 hud     = None
 jog     = None
 execute = None
