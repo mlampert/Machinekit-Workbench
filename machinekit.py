@@ -10,10 +10,11 @@ import threading
 import zeroconf
 import zmq
 
-from MKServiceCommand import *
-from MKServiceError import *
-from MKServiceStatus import *
-from MKServiceHal import *
+from MKCommand          import *
+from MKServiceCommand   import *
+from MKServiceError     import *
+from MKServiceStatus    import *
+from MKServiceHal       import *
 
 AxesForward  = ['X', 'Y', 'Z', 'A', 'B', 'C', 'U', 'V', 'W']
 AxesBackward = ['x', 'y', 'z', 'a', 'b', 'c', 'u', 'v', 'w']
@@ -260,6 +261,14 @@ class Machinekit(object):
     def getJob(self):
         return self.job
 
+    def mdi(self, cmd):
+        command = self.connectWith('command')
+        status = self.connectWith('status')
+        if status and command:
+            sequence = taskModeMDI(self)
+            sequence.append(MKCommandTaskExecute(cmd))
+            command.sendCommands(sequence)
+
 class ServiceMonitor(object):
     _Instance = None
 
@@ -308,6 +317,23 @@ class ServiceMonitor(object):
         cls.Start()
         return cls._Instance
 
+def taskMode(service, mode, force):
+    m = service['task.task.mode']
+    if m is None:
+        m = service['status.task.task.mode'] 
+    if m != mode or force:
+        return [MKCommandTaskSetMode(mode)]
+    return []
+
+def taskModeAuto(service, force=False):
+    return taskMode(service, STATUS.EmcTaskModeType.Value('EMC_TASK_MODE_AUTO'), force)
+
+def taskModeMDI(service, force=False):
+    return taskMode(service, STATUS.EmcTaskModeType.Value('EMC_TASK_MODE_MDI'), force)
+
+def taskModeManual(service, force=False):
+    return taskMode(service, STATUS.EmcTaskModeType.Value('EMC_TASK_MODE_MANUAL'), force)
+
 def Start():
     ServiceMonitor.Start()
 
@@ -336,24 +362,9 @@ def FileResource(filename):
 def IconResource(filename):
     return PySide.QtGui.QIcon(FileResource(filename))
 
-def taskMode(service, mode, force):
-    m = service['task.task.mode']
-    if m is None:
-        m = service['status.task.task.mode'] 
-    if m != mode or force:
-        return [MKCommandTaskSetMode(mode)]
-    return []
-
-def taskModeAuto(service, force=False):
-    return taskMode(service, STATUS.EmcTaskModeType.Value('EMC_TASK_MODE_AUTO'), force)
-
-def taskModeMDI(service, force=False):
-    return taskMode(service, STATUS.EmcTaskModeType.Value('EMC_TASK_MODE_MDI'), force)
-
-def taskModeManual(service, force=False):
-    return taskMode(service, STATUS.EmcTaskModeType.Value('EMC_TASK_MODE_MANUAL'), force)
-
-def Estop(mk):
+def Estop(mk=None):
+    if mk is None:
+        mk = Any()
     status = mk.connectWith('status')
     command = mk.connectWith('command')
 
@@ -363,7 +374,9 @@ def Estop(mk):
     commands.append(MKCommandPower(not mk.isPowered()))
     command.sendCommands(commands)
 
-def Home(mk):
+def Home(mk=None):
+    if mk is None:
+        mk = Any()
     status = mk.connectWith('status')
     command = mk.connectWith('command')
 
@@ -386,6 +399,11 @@ def Home(mk):
             sequence.append([MKCommandWaitUntil(lambda index=index: status["motion.axis.%d.homed" % index])])
 
     command.sendCommandSequence(sequence)
+
+def MDI(cmd, mk=None):
+    if mk is None:
+        mk = Any()
+    mk.mdi(cmd)
 
 hud     = None
 jog     = None
