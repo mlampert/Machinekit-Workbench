@@ -1,5 +1,6 @@
 import FreeCAD
 import FreeCADGui
+import PathScripts.PathLog as PathLog
 import PySide.QtCore
 import PySide.QtGui
 import machinetalk.protobuf.message_pb2 as MESSAGE
@@ -185,6 +186,7 @@ class Machinekit(object):
         self.thread = None
         self.manualToolChangeNotifier = ManualToolChangeNotifier(self)
         self.job = None
+        self.error = None
 
     def __str__(self):
         with self.lock:
@@ -207,11 +209,15 @@ class Machinekit(object):
             if self.thread is None:
                 self.thread = _Thread(self)
                 self.thread.start()
-        if service == b'status':
+        if service in [b'error', b'status']:
             s = self.connectWith(service.decode())
 
     def _removeService(self, name):
         with self.lock:
+            if name == 'error' and self.error:
+                self.error.separate()
+                self.error = None
+
             for epn, ep in self.endpoint.items():
                 if ep.name == name:
                     if epn in [b'halrcmd', 'halrcomp']:
@@ -223,6 +229,15 @@ class Machinekit(object):
         if self.quit and self.thread:
             self.thread.join()
             self.thread = None
+
+    def changed(self, service, msg):
+        display = PathLog.info
+        if msg.isError():
+            display = PathLog.error
+        if msg.isText():
+            display = PathLog.notice
+        for m in msg.messages():
+            display(m)
 
     def providesServices(self, services):
         candidates = [s for s in [self.endpoint.get(v) for v in services]]
@@ -350,6 +365,8 @@ def Any():
             mtc = mk.manualToolChangeNotifier
             if not mtc.isConnected():
                 mtc.connect()
+            if not mk.error and mk['error']:
+                mk.error = ServiceConnector(mk.connectWith('error'), mk)
         return mks[0]
     return None
 
