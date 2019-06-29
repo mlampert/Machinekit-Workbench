@@ -57,7 +57,7 @@ machinekit.ERROR: Can't issue MDI command when not homed
 ```
 
 ## Dependencies
-* python3-pyftplib
+* python3-pyftpdlib
 * python3-protobuf
 * python3-zeroconf
 * python3-zmq
