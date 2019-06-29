@@ -1,3 +1,4 @@
+import PathScripts.PathLog as PathLog
 import itertools
 import machinetalk.protobuf.object_pb2 as OBJECT
 import machinetalk.protobuf.types_pb2 as TYPES
@@ -8,6 +9,8 @@ import zmq
 from MKCommand import *
 from MKError   import *
 from MKService import *
+
+PathLog.setLevel(PathLog.Level.INFO, PathLog.thisModule())
 
 def pinValueBit(container):
     return container.halbit
@@ -89,12 +92,17 @@ class MKServiceHalStatus(MKServiceSubscribe):
     def process(self, container):
         #print(container)
         if container.type ==  TYPES.MT_HALRCOMP_ERROR:
-            # this will be the last time the service sends a message
-            print("ERROR: %s" % container.note);
+            for note in container.note:
+                if 'hal_manualtoolchange' in note and 'does not exist' in note:
+                    # this will be the last time the service sends a message
+                    PathLog.info('no manual tool change')
+                else:
+                    PathLog.error(note)
+
         elif container.type == TYPES.MT_HALRCOMP_FULL_UPDATE:
             for comp in container.comp:
                 if comp.name == 'hal_manualtoolchange':
-                    print('manual tool change detected')
+                    PathLog.info('manual tool change detected')
                     self.toolChange = ComponentManualToolChange(comp)
         elif container.type == TYPES.MT_HALRCOMP_INCREMENTAL_UPDATE and self.toolChange:
             for pin in container.pin:
