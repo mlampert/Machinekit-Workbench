@@ -1,12 +1,16 @@
 import FreeCAD
 import FreeCADGui
 import PathScripts.PathGeom as PathGeom
+import PathScripts.PathLog as PathLog
 import PySide.QtCore
 import PySide.QtGui
 import machinekit
 import machinetalk.protobuf.status_pb2 as STATUS
 
 from MKCommand import *
+
+PathLog.setLevel(PathLog.Level.DEBUG, PathLog.thisModule())
+PathLog.trackModule(PathLog.thisModule())
 
 EmcLinearUnits = {
         STATUS.EmcLinearUnitsType.Value('LINEAR_UNITS_INCH') : 'in',
@@ -80,8 +84,12 @@ class Jog(object):
             self.isSetup = False
 
     def setupUI(self):
-        for inc in self['status.config.increments']:
-            self.ui.jogDistance.addItem(inc)
+        select = 0
+        for i, inc in enumerate(self['status.config.increments']):
+            if PathGeom.isRoughly(1.0, FreeCAD.Units.Quantity(inc).Value):
+                select = i
+            self.ui.jogDistance.addItem(inc.strip())
+        self.ui.jogDistance.setCurrentIndex(select)
         self.isSetup = True
 
     def __getitem__(self, index):
@@ -140,6 +148,7 @@ class Jog(object):
         self.ui.jogDistance.setEnabled(not self.ui.jogContinuous.isChecked())
 
     def jogAxesZero(self, axes):
+        PathLog.track(axes)
         jog = []
         for axis in (['x', 'y'] if axes[0] == '-' else ['z']):
             distance = self.displayPos(axis)
@@ -155,6 +164,7 @@ class Jog(object):
             self.cmd.sendCommandSequence(sequence)
 
     def jogAxes(self, axes):
+        PathLog.track(axes)
         if not self.ui.jogContinuous.isChecked():
             jog = []
             for axis in axes:
@@ -168,6 +178,7 @@ class Jog(object):
                 self.cmd.sendCommandSequence(sequence)
 
     def jogAxesBegin(self, axes):
+        PathLog.track(axes)
         if self.ui.jogContinuous.isChecked():
             jog = []
             for axis in axes:
@@ -180,6 +191,7 @@ class Jog(object):
 
 
     def jogAxesEnd(self, axes):
+        PathLog.track(axes)
         if self.ui.jogContinuous.isChecked():
             jog = []
             for axis in axes:
