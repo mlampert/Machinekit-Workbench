@@ -4,7 +4,7 @@ from MKError   import *
 from MKService import *
 
 class MKServiceError(MKServiceSubscribe):
-    '''Gets and displayes the emc status'''
+    '''Gets and displays the emc status'''
 
     def __init__(self, context, name, properties):
         MKServiceSubscribe.__init__(self, context, name, properties)
