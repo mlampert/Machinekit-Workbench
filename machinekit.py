@@ -279,7 +279,7 @@ class Machinekit(object):
         return (not self['status.io.estop']) and self['status.motion.enabled']
 
     def isHomed(self):
-        return self.isPowered() and all([axis.homed for axis in self['status.motion.axis']])
+        return self.isPowered() and all([axis.homed != 0 for axis in self['status.motion.axis']])
 
     def setJob(self, job):
         self.job = job

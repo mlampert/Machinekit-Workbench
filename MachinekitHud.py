@@ -27,7 +27,7 @@ class HUD(object):
         self.pos.translation = (xpos, ypos, 0)
 
         self.mat = coin.SoMaterial()
-        self.mat.diffuseColor = coin.SbColor(0.9, 0, 0.9)
+        self.mat.diffuseColor = coin.SbColor(0.9, 0.0, 0.9)
         self.mat.transparency = 0
 
         self.fnt = coin.SoFont()
@@ -73,17 +73,21 @@ class HUD(object):
         self.sup = None
 
         self.up = 0
-        self.setPosition(0, 0, 0, False)
+        self.setPosition(0, 0, 0, False, False)
 
-    def setPosition(self, x, y, z, hot=False):
+    def setPosition(self, x, y, z, homed=True, hot=False):
         self.up += 1
+        if homed:
+            self.mat.diffuseColor = coin.SbColor(0.0, 0.9, 0.0)
+        else:
+            self.mat.diffuseColor = coin.SbColor(0.9, 0.0, 0.9)
         self.txt.string.setValues([axisFmt('X', x), axisFmt('Y', y), axisFmt('Z', z)])
         self.tPos.translation = (x, y, z)
 
         if hot:
-            self.tMat.diffuseColor = coin.SbColor(0.9, 0, 0.0)
+            self.tMat.diffuseColor = coin.SbColor(0.9, 0.0, 0.0)
         else:
-            self.tMat.diffuseColor = coin.SbColor(0.0, 0, 0.9)
+            self.tMat.diffuseColor = coin.SbColor(0.0, 0.0, 0.9)
 
     def show(self):
         self.sup = self.render.addSuperimposition(self.sep)
@@ -113,6 +117,12 @@ class Hud(object):
         self.connector = None
         self.hud.hide()
 
+    def homed(self):
+        for i in range(3):
+            if self.status["motion.axis.%d.homed" % i] == 0:
+                return False
+        return True
+
     def displayPos(self, axis):
         return self.status["motion.position.actual.%s" % axis] - self.status["motion.offset.g5x.%s" % axis]
 
@@ -124,7 +134,7 @@ class Hud(object):
         y = self.displayPos('y')
         z = self.displayPos('z')
         hot = self.spindleRunning()
-        self.hud.setPosition(x, y, z, hot)
+        self.hud.setPosition(x, y, z, self.homed(), hot)
 
     def changed(self, service, msg):
         if self.mk:

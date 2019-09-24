@@ -212,10 +212,10 @@ class Jog(object):
 
     def updateDRO(self, connected, powered):
         def updateAxisWidget(w, pos, homed):
-            if homed:
-                w.setStyleSheet('color:darkgreen; background-color:white')
-            else:
+            if homed == 0:
                 w.setStyleSheet('color:blueviolet; background-color:lightGray')
+            else:
+                w.setStyleSheet('color:darkgreen; background-color:white')
             w.setValue(pos)
 
         if connected and powered:
