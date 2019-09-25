@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>521</width>
-    <height>360</height>
+    <width>441</width>
+    <height>622</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -247,7 +247,16 @@
           <property name="spacing">
            <number>0</number>
           </property>
-          <property name="margin">
+          <property name="leftMargin">
+           <number>0</number>
+          </property>
+          <property name="topMargin">
+           <number>0</number>
+          </property>
+          <property name="rightMargin">
+           <number>0</number>
+          </property>
+          <property name="bottomMargin">
            <number>0</number>
           </property>
           <item>
@@ -303,40 +312,8 @@
        <property name="horizontalSpacing">
         <number>9</number>
        </property>
-       <item row="0" column="2">
-        <widget class="QWidget" name="widget_4" native="true">
-         <layout class="QVBoxLayout" name="verticalLayout_2">
-          <item>
-           <widget class="QPushButton" name="jogContinuous">
-            <property name="text">
-             <string>Continuous</string>
-            </property>
-            <property name="checkable">
-             <bool>true</bool>
-            </property>
-            <property name="checked">
-             <bool>true</bool>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QComboBox" name="jogDistance"/>
-          </item>
-          <item>
-           <widget class="QPushButton" name="jogGoto">
-            <property name="text">
-             <string>Move Gantry</string>
-            </property>
-            <property name="checkable">
-             <bool>true</bool>
-            </property>
-           </widget>
-          </item>
-         </layout>
-        </widget>
-       </item>
        <item row="0" column="1">
-        <widget class="QWidget" name="widget_2" native="true">
+        <widget class="QWidget" name="jogXYgroup" native="true">
          <layout class="QGridLayout" name="gridLayout">
           <item row="0" column="2">
            <widget class="QPushButton" name="jogNE">
@@ -513,7 +490,7 @@
         </widget>
        </item>
        <item row="0" column="0">
-        <widget class="QWidget" name="widget" native="true">
+        <widget class="QWidget" name="jogZgroup" native="true">
          <layout class="QVBoxLayout" name="verticalLayout">
           <item>
            <widget class="QPushButton" name="jogU">
@@ -575,7 +552,7 @@
          </layout>
         </widget>
        </item>
-       <item row="0" column="3">
+       <item row="0" column="4">
         <spacer name="horizontalSpacer_2">
          <property name="orientation">
           <enum>Qt::Horizontal</enum>
@@ -587,6 +564,57 @@
           </size>
          </property>
         </spacer>
+       </item>
+       <item row="1" column="0" colspan="4">
+        <widget class="QWidget" name="widget_4" native="true">
+         <layout class="QGridLayout" name="gridLayout_2">
+          <item row="1" column="0">
+           <widget class="QPushButton" name="jogGoto">
+            <property name="text">
+             <string>Move Gantry</string>
+            </property>
+            <property name="checkable">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="0">
+           <widget class="QPushButton" name="jogContinuous">
+            <property name="text">
+             <string>Continuous</string>
+            </property>
+            <property name="checkable">
+             <bool>true</bool>
+            </property>
+            <property name="checked">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <widget class="QComboBox" name="jogDistance"/>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item row="0" column="2">
+        <widget class="QWidget" name="jogStopGroup" native="true">
+         <layout class="QHBoxLayout" name="horizontalLayout_2">
+          <item>
+           <widget class="QPushButton" name="jogStop">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Preferred" vsizetype="MinimumExpanding">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="text">
+             <string>Stop</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
        </item>
       </layout>
      </widget>

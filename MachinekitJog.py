@@ -35,11 +35,11 @@ class Jog(object):
                 self.cmd = service
             self.connectors.append(machinekit.ServiceConnector(service, self))
 
-        def setupJogButton(b, axes, icon, zero=False):
+        def setupJogButton(b, axes, icon, slot=None):
             b.setIcon(machinekit.IconResource(icon))
             b.setText('')
-            if zero:
-                b.clicked.connect(lambda  : self.jogAxesZero(axes))
+            if slot:
+                b.clicked.connect(slot)
             else:
                 b.clicked.connect(lambda  : self.jogAxes(axes))
                 b.pressed.connect(lambda  : self.jogAxesBegin(axes))
@@ -49,18 +49,19 @@ class Jog(object):
             b.setMaximumWidth(width)
             b.clicked.connect(lambda : self.setPosition(axes, widget))
 
-        setupJogButton(self.ui.jogN,  'Y',  'arrow-up.svg')
+        setupJogButton(self.ui.jogN,   'Y', 'arrow-up.svg')
         setupJogButton(self.ui.jogNE, 'XY', 'arrow-right-up.svg')
-        setupJogButton(self.ui.jogE,  'X',  'arrow-right.svg')
+        setupJogButton(self.ui.jogE,   'X', 'arrow-right.svg')
         setupJogButton(self.ui.jogSE, 'Xy', 'arrow-right-down.svg')
-        setupJogButton(self.ui.jogS,  'y',  'arrow-down.svg')
+        setupJogButton(self.ui.jogS,   'y', 'arrow-down.svg')
         setupJogButton(self.ui.jogSW, 'xy', 'arrow-left-down.svg')
-        setupJogButton(self.ui.jogW,  'x',  'arrow-left.svg')
+        setupJogButton(self.ui.jogW,   'x', 'arrow-left.svg')
         setupJogButton(self.ui.jogNW, 'xY', 'arrow-left-up.svg')
-        setupJogButton(self.ui.jogU,  'Z',  'arrow-up.svg')
-        setupJogButton(self.ui.jogD,  'z',  'arrow-down.svg')
-        setupJogButton(self.ui.jog0,  '-',  'home-xy.svg', True)
-        setupJogButton(self.ui.jogZ0, '|',  'home-z.svg',  True)
+        setupJogButton(self.ui.jogU,   'Z', 'arrow-up.svg')
+        setupJogButton(self.ui.jogD,   'z', 'arrow-down.svg')
+        setupJogButton(self.ui.jog0,    '', 'home-xy.svg', lambda : self.jogAxesZero('-'))
+        setupJogButton(self.ui.jogZ0,   '', 'home-z.svg',  lambda : self.jogAxesZero('|'))
+        setupJogButton(self.ui.jogStop, '', 'stop.svg',    lambda : self.jogAxesStop())
 
         buttonWidth = self.ui.setX.size().height()
         setupSetButton(self.ui.setX,      'X', self.ui.posX, buttonWidth)
@@ -70,6 +71,7 @@ class Jog(object):
         setupSetButton(self.ui.setY0,     'Y',         None, buttonWidth)
         setupSetButton(self.ui.setZ0,     'Z',         None, buttonWidth)
         setupSetButton(self.ui.setXYZ0, 'XYZ',         None, buttonWidth)
+        self.ui.jogStop.setIconSize(PySide.QtCore.QSize(3 * buttonWidth, 3 * buttonWidth))
 
         self.ui.jogContinuous.clicked.connect(self.setJoggingMode)
         self.setJoggingMode()
@@ -201,6 +203,12 @@ class Jog(object):
                 sequence = [[cmd] for cmd in machinekit.taskModeManual(self)]
                 sequence.append(jog)
                 self.cmd.sendCommandSequence(sequence)
+
+    def jogAxesStop(self):
+        PathLog.track()
+        sequence = [[cmd] for cmd in machinekit.taskModeManual(self)]
+        sequence.append([MKCommandAxisAbort(i) for i in range(3)])
+        self.cmd.sendCommandSequence(sequence)
 
     # Selection.Observer
     def addSelection(self, doc, obj, sub, pnt):
