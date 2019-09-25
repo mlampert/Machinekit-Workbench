@@ -19,6 +19,8 @@ EmcLinearUnits = {
         }
 
 class Jog(object):
+    JogContinuous = 'Continuous'
+
     def __init__(self, mk):
         machinekit.jog = self
         self.mk = mk
@@ -73,9 +75,6 @@ class Jog(object):
         setupSetButton(self.ui.setXYZ0, 'XYZ',         None, buttonWidth)
         self.ui.jogStop.setIconSize(PySide.QtCore.QSize(3 * buttonWidth, 3 * buttonWidth))
 
-        self.ui.jogContinuous.clicked.connect(self.setJoggingMode)
-        self.setJoggingMode()
-
         self.jogGoto = None
 
         FreeCADGui.Selection.addObserver(self)
@@ -86,12 +85,11 @@ class Jog(object):
             self.isSetup = False
 
     def setupUI(self):
-        select = 0
-        for i, inc in enumerate(self['status.config.increments']):
-            if PathGeom.isRoughly(1.0, FreeCAD.Units.Quantity(inc).Value):
-                select = i
-            self.ui.jogDistance.addItem(inc.strip())
-        self.ui.jogDistance.setCurrentIndex(select)
+        for inc in [self.JogContinuous] + self['status.config.increments']:
+            item = PySide.QtGui.QListWidgetItem(inc.strip())
+            item.setTextAlignment(PySide.QtCore.Qt.AlignRight)
+            self.ui.jogDistance.addItem(item)
+        self.ui.jogDistance.setCurrentRow(0)
         self.isSetup = True
 
     def __getitem__(self, index):
@@ -146,8 +144,8 @@ class Jog(object):
     def displayPos(self, axis):
         return self["status.motion.position.actual.%s" % axis] - self["status.motion.offset.g5x.%s" % axis]
 
-    def setJoggingMode(self):
-        self.ui.jogDistance.setEnabled(not self.ui.jogContinuous.isChecked())
+    def jogContinuously(self):
+        return self.ui.jogDistance.currentRow() == 0
 
     def jogAxesZero(self, axes):
         PathLog.track(axes)
@@ -167,12 +165,12 @@ class Jog(object):
 
     def jogAxes(self, axes):
         PathLog.track(axes)
-        if not self.ui.jogContinuous.isChecked():
+        if not self.jogContinuously():
             jog = []
             for axis in axes:
                 index, velocity = self.getJogIndexAndVelocity(axis)
                 units = EmcLinearUnits[self['status.config.units.linear']]
-                distance = FreeCAD.Units.Quantity(self.ui.jogDistance.currentText()).getValueAs(units)
+                distance = FreeCAD.Units.Quantity(self.ui.jogDistance.currentItem().text()).getValueAs(units)
                 jog.append(MKCommandAxisJog(index, velocity, distance))
             if jog:
                 sequence = [[cmd] for cmd in machinekit.taskModeManual(self)]
@@ -181,7 +179,7 @@ class Jog(object):
 
     def jogAxesBegin(self, axes):
         PathLog.track(axes)
-        if self.ui.jogContinuous.isChecked():
+        if self.jogContinuously():
             jog = []
             for axis in axes:
                 index, velocity = self.getJogIndexAndVelocity(axis)
@@ -194,7 +192,7 @@ class Jog(object):
 
     def jogAxesEnd(self, axes):
         PathLog.track(axes)
-        if self.ui.jogContinuous.isChecked():
+        if self.jogContinuously():
             jog = []
             for axis in axes:
                 index, velocity = self.getJogIndexAndVelocity(axis)
