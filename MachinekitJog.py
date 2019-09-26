@@ -154,10 +154,7 @@ class Jog(object):
             distance = self.displayPos(axis)
             if distance != 0.0:
                 index, velocity = self.getJogIndexAndVelocity(axis)
-                if distance < 0:
-                    jog.append(MKCommandAxisJog(index, -velocity, -distance))
-                else:
-                    jog.append(MKCommandAxisJog(index,  velocity,  distance))
+                jog.append(MKCommandAxisJog(index,  velocity,  distance))
         if jog:
             sequence = [[cmd] for cmd in machinekit.taskModeManual(self)]
             sequence.append(jog)
@@ -217,16 +214,21 @@ class Jog(object):
             mkx = self.displayPos('x')
             mky = self.displayPos('y')
             mkz = self.displayPos('z')
+            jog = []
             if PathGeom.isRoughly(x, mkx) and PathGeom.isRoughly(y, mky):
                 # only jog the Z axis if XY already match
-                task = "G0 X%f Y%f Z%f" % (x, y, z)
+                index, velocity = self.getJogIndexAndVelocity('z')
+                jog.append(MKCommandAxisJog(index, velocity, mkz - z))
             else:
                 # by default we just jog X & Y
-                task = "G0 X%f Y%f" % (x, y)
+                index, velocity = self.getJogIndexAndVelocity('x')
+                jog.append(MKCommandAxisJog(index, velocity, mkx - x))
+                index, velocity = self.getJogIndexAndVelocity('y')
+                jog.append(MKCommandAxisJog(index, velocity, mky - y))
 
-            sequence = machinekit.taskModeMDI(self)
-            sequence.append(MKCommandTaskExecute(task))
-            self.cmd.sendCommands(sequence)
+            sequence = [[cmd] for cmd in machinekit.taskModeManual(self)]
+            sequence.append(jog)
+            self.cmd.sendCommandSequence(sequence)
 
     def updateDRO(self, connected, powered):
         def updateAxisWidget(w, pos, homed):
