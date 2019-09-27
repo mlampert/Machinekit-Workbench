@@ -3,6 +3,7 @@ import FreeCADGui
 import PathScripts.PathLog as PathLog
 import PySide.QtCore
 import PySide.QtGui
+import itertools
 import machinetalk.protobuf.message_pb2 as MESSAGE
 import machinetalk.protobuf.status_pb2 as STATUS
 import machinetalk.protobuf.types_pb2 as TYPES
@@ -16,6 +17,9 @@ from MKServiceCommand   import *
 from MKServiceError     import *
 from MKServiceStatus    import *
 from MKServiceHal       import *
+
+PathLog.setLevel(PathLog.Level.NOTICE, PathLog.thisModule())
+#PathLog.trackModule(PathLog.thisModule())
 
 AxesForward  = ['X', 'Y', 'Z', 'A', 'B', 'C', 'U', 'V', 'W']
 AxesBackward = ['x', 'y', 'z', 'a', 'b', 'c', 'u', 'v', 'w']
@@ -62,7 +66,6 @@ class _Endpoint(object):
         self.properties = properties
         self.dsn = properties[b'dsn']
         self.uuid = properties[b'instance']
-        print("machinetalk.%-13s %s:%d" % (self.service.decode(), self.address(), self.port()))
 
     def addressRaw(self):
         return self.addr
@@ -101,7 +104,7 @@ class _ManualToolChangeNotifier(object):
     def changed(self, service, msg):
         if msg.changeTool():
             if 0 == msg.toolNumber():
-                #print("TC clear")
+                PathLog.debug("TC clear")
                 service.toolChanged(self.command, True)
             else:
                 tc = self.getTC(msg.toolNumber())
@@ -117,16 +120,16 @@ class _ManualToolChangeNotifier(object):
                 mb.setIcon(PySide.QtGui.QMessageBox.Warning)
                 mb.setStandardButtons(PySide.QtGui.QMessageBox.Ok | PySide.QtGui.QMessageBox.Abort)
                 if PySide.QtGui.QMessageBox.Ok == mb.exec_():
-                    #print("TC confirm")
+                    PathLog.debug("TC confirm")
                     service.toolChanged(self.command, True)
                 else:
-                    #print("TC abort")
+                    PathLog.debug("TC abort")
                     self.mk.connectWith('command').sendCommand(MKCommandTaskAbort())
         elif msg.toolChanged():
-            #print('TC reset')
+            PathLog.debug('TC reset')
             service.toolChanged(self.command, False)
         else:
-            #print('TC -')
+            PathLog.debug('TC -')
             pass
 
     def getTC(self, nr):
@@ -146,14 +149,13 @@ class _Thread(PySide.QtCore.QThread):
         self.timeout = 100
 
     def run(self):
-        print('thread start')
+        PathLog.info('thread start')
         while not self.mk.quit:
             s = dict(self.mk.poller.poll(self.timeout))
             if s:
                 with self.mk.lock:
                     for name, service in self.mk.service.items():
                         if service.socket in s:
-                            #print('+', name)
                             msg = None
                             rsp = None
                             rx = MESSAGE.Container()
@@ -161,12 +163,12 @@ class _Thread(PySide.QtCore.QThread):
                                 msg = service.receiveMessage()
                                 rx.ParseFromString(msg)
                             except Exception as e:
-                                print("%s exception: %s" % (service.name, e))
-                                print("    msg = '%s'" % msg)
+                                PathLog.error("%s exception: %s" % (service.name, e))
+                                PathLog.error("    msg = '%s'" % msg)
                             else:
                                 # ignore all ping messages for now
                                 if rx.type != TYPES.MT_PING:
-                                    #print(rx)
+                                    #PathLog.debug(rx)
                                     service.process(rx);
                         else:
                             #print('-', name)
@@ -175,7 +177,7 @@ class _Thread(PySide.QtCore.QThread):
                 for name, service in self.mk.service.items():
                     service.ping()
 
-        print('thread stop')
+        PathLog.info('thread stop')
 
 
 class Machinekit(object):
@@ -215,13 +217,15 @@ class Machinekit(object):
     def _addService(self, properties, name, address, port):
         service = properties[b'service']
         with self.lock:
-            self.endpoint[service.decode()] = _Endpoint(service, name, address, port, properties)
+            endpoint = _Endpoint(service, name, address, port, properties)
+            self.endpoint[service.decode()] = endpoint
             self.quit = False
             if self.thread is None:
                 self.thread = _Thread(self)
                 self.thread.start()
         if service in [b'error', b'status']:
             s = self.connectWith(service.decode())
+        return (service, endpoint)
 
     def _removeService(self, name):
         with self.lock:
@@ -259,11 +263,11 @@ class Machinekit(object):
             if not self.service.get(s):
                 cls = _MKServiceRegister.get(s)
                 if cls is None:
-                    print("Error: service %s not supported" % s)
+                    PathLog.error("service %s not supported" % s)
                 else:
                     mk = self.endpoint.get(s)
                     if mk is None:
-                        print("Error: no endpoint for %s" % s)
+                        PathLog.error("no endpoint for %s" % s)
                     else:
                         service = cls(self.context, s, mk.properties)
                         self.service[s] = service
@@ -274,6 +278,9 @@ class Machinekit(object):
 
     def connectServices(self, services):
         return [self.connectWith(s) for s in services]
+
+    def isValid(self):
+        return not (self['status'] is None or not self['status'].isValid() or self['halrcmd'] is None)
 
     def isPowered(self):
         return (not self['status.io.estop']) and self['status.motion.enabled']
@@ -313,14 +320,16 @@ class _ServiceMonitor(object):
     def add_service(self, zc, typ, name):
         info = zc.get_service_info(typ, name)
         if info and info.properties.get(b'service'):
-            #print(info)
             uuid = info.properties[b'uuid']
             mk = self.machinekit.get(uuid)
             if not mk:
                 mk = Machinekit(uuid, info.properties)
                 self.machinekit[uuid] = mk
-            mk._addService(info.properties, info.name, info.address, info.port)
-            #print(mk)
+            service, endpoint = mk._addService(info.properties, info.name, info.address, info.port)
+            PathLog.info("machinetalk.%-13s %s:%d" % (service.decode(), endpoint.address(), endpoint.port()))
+        else:
+            name = ' '.join(itertools.takewhile(lambda s: s != 'service', info.name.split()))
+            PathLog.info("machinetalk.%-13s - no info" % (name))
 
     def run(self):
         while not self.quit:
@@ -402,8 +411,8 @@ def Any():
         return mks[0]
     return None
 
-def Estop(mk=None):
-    '''Estop(mk=None) ... unlocks estop and toggles power, if no MK instance is provided Any() is used.'''
+def Power(mk=None):
+    '''Power(mk=None) ... unlocks estop and toggles power, if no MK instance is provided Any() is used.'''
     if mk is None:
         mk = Any()
     status = mk.connectWith('status')

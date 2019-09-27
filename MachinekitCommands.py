@@ -6,23 +6,32 @@ import MachinekitJog
 import PathScripts.PathLog as PathLog
 import machinekit
 
-from PySide import QtCore, QtGui
+from PySide import QtCore
 
-PathLog.setLevel(PathLog.Level.DEBUG, PathLog.thisModule())
-PathLog.trackModule(PathLog.thisModule())
+PathLog.setLevel(PathLog.Level.INFO, PathLog.thisModule())
+#PathLog.trackModule(PathLog.thisModule())
 
 Dock = None
 
 class MachinekitCommand(object):
-    def __init__(self, services):
+    def __init__(self, name, services):
         PathLog.track(services)
+        self.name = name
         self.services = services
 
+    def validMachinekit(self):
+        mk = machinekit.Any()
+        if mk and mk.isValid():
+            return mk
+        return None
+
     def IsActive(self):
-        return not machinekit.Any() is None
+        PathLog.track(self.name)
+        return not self.validMachinekit() is None
 
     def Activated(self):
         global Dock
+        PathLog.track(self.name)
         dock = None
         instances = machinekit.Instances(self.serviceNames())
         if 0 == len(instances):
@@ -30,14 +39,14 @@ class MachinekitCommand(object):
             pass
         if 1 == len(instances):
             dock = self.activate(instances[0])
-        if not dock is None:
+        if dock is None:
+            PathLog.debug('No dock to activate')
+        else:
             PathLog.debug('Activate first found instance')
             Dock = dock
             for closebutton in [widget for widget in dock.ui.children() if widget.objectName().endswith('closebutton')]:
                 closebutton.clicked.connect(lambda : self.terminateDock(dock))
             FreeCADGui.getMainWindow().addDockWidget(QtCore.Qt.LeftDockWidgetArea, dock.ui)
-        else:
-            PathLog.debug('No dock to activate')
 
     def serviceNames(self):
         return self.services
@@ -51,7 +60,7 @@ class MachinekitCommand(object):
 class MachinekitCommandJog(MachinekitCommand):
     def __init__(self):
         PathLog.track()
-        super(self.__class__, self).__init__(['command', 'status'])
+        super(self.__class__, self).__init__('Jog', ['command', 'status'])
 
     def activate(self, mk):
         PathLog.track()
@@ -67,7 +76,7 @@ class MachinekitCommandJog(MachinekitCommand):
 
 class MachinekitCommandExecute(MachinekitCommand):
     def __init__(self):
-        super(self.__class__, self).__init__(['command', 'status'])
+        super(self.__class__, self).__init__('Exe', ['command', 'status'])
 
     def activate(self, mk):
         return MachinekitExecute.Execute(mk)
@@ -81,12 +90,11 @@ class MachinekitCommandExecute(MachinekitCommand):
 
 class MachinekitCommandHud(MachinekitCommand):
     def __init__(self):
-        super(self.__class__, self).__init__(['command', 'status'])
+        super(self.__class__, self).__init__('Hud', ['command', 'status'])
 
     def IsActive(self):
-        if super(self.__class__, self).IsActive():
-            return not FreeCADGui.ActiveDocument is None
-        return False
+        PathLog.track(self.name)
+        return not (self.validMachinekit() is None or FreeCADGui.ActiveDocument is None)
 
     def activate(self, mk):
         MachinekitHud.ToggleHud(mk)
@@ -99,12 +107,12 @@ class MachinekitCommandHud(MachinekitCommand):
                 }
 
 
-class MachinekitCommandEstop(MachinekitCommand):
+class MachinekitCommandPower(MachinekitCommand):
     def __init__(self):
-        super(self.__class__, self).__init__(['command', 'status'])
+        super(self.__class__, self).__init__('Pwr', ['command', 'status'])
 
     def activate(self, mk):
-        machinekit.Estop(mk)
+        machinekit.Power(mk)
 
     def GetResources(self):
         return {
@@ -115,10 +123,11 @@ class MachinekitCommandEstop(MachinekitCommand):
 
 class MachinekitCommandHome(MachinekitCommand):
     def __init__(self):
-        super(self.__class__, self).__init__(['command', 'status'])
+        super(self.__class__, self).__init__('Home', ['command', 'status'])
 
     def IsActive(self):
-        mk = machinekit.Any()
+        PathLog.track(self.name)
+        mk = self.validMachinekit()
         if mk:
             return mk.isPowered() and not mk.isHomed()
         return False
@@ -135,19 +144,50 @@ class MachinekitCommandHome(MachinekitCommand):
 
 ToolbarName  = 'MachinekitTools'
 ToolbarTools = ['MachinekitCommandHud', 'MachinekitCommandJog', 'MachinekitCommandExecute']
-MenuList     = ["MachinekitCommandEstop", "MachinekitCommandHome", "Separator"] + ToolbarTools
+MenuList     = ['MachinekitCommandPower', 'MachinekitCommandHome', 'Separator'] + ToolbarTools
+
+class MachinekitCommandCenter(object):
+    def __init__(self):
+        self.timer = QtCore.QTimer()
+        self.timer.timeout.connect(self.tick)
+        self.commands = []
+
+        self._addCommand('MachinekitCommandPower',   MachinekitCommandPower())
+        self._addCommand('MachinekitCommandHome',    MachinekitCommandHome())
+        self._addCommand('MachinekitCommandHud',     MachinekitCommandHud())
+        self._addCommand('MachinekitCommandJog',     MachinekitCommandJog())
+        self._addCommand('MachinekitCommandExecute', MachinekitCommandExecute())
+
+        self.active = [cmd.IsActive() for cmd in self.commands]
+
+    def _addCommand(self, name, cmd):
+        self.commands.append(cmd)
+        FreeCADGui.addCommand(name, cmd)
+
+    def start(self):
+        # it's probably good enough to update once a second
+        self.timer.start(1000)
+
+    def stop(self):
+        self.timer.stop()
+
+    def tick(self):
+        active = [cmd.IsActive() for cmd in self.commands]
+        def aString(activation):
+            return '.'.join(['1' if a else '0' for a in activation])
+        if self.active != active:
+            PathLog.info("Command activation changed from %s to %s" % (aString(self.active), aString(active)))
+            FreeCADGui.updateCommands()
+            self.active = active
+
+_commandCenter = MachinekitCommandCenter()
 
 def Activated():
     PathLog.track()
     machinekit.Start()
+    _commandCenter.start()
 
 def Deactivated():
     PathLog.track()
-    pass
-
-FreeCADGui.addCommand('MachinekitCommandEstop',   MachinekitCommandEstop())
-FreeCADGui.addCommand('MachinekitCommandExecute', MachinekitCommandExecute())
-FreeCADGui.addCommand('MachinekitCommandHome',    MachinekitCommandHome())
-FreeCADGui.addCommand('MachinekitCommandHud',     MachinekitCommandHud())
-FreeCADGui.addCommand('MachinekitCommandJog',     MachinekitCommandJog())
+    _commandCenter.stop()
 
