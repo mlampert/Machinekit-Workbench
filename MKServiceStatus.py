@@ -1,24 +1,35 @@
+import PathScripts.PathLog as PathLog
+import traceback
+
 from MKObserverable import *
 from MKService import *
 
 from machinetalk.protobuf.status_pb2 import *
 from machinetalk.protobuf.types_pb2 import MT_EMCSTAT_FULL_UPDATE
 
+
+PathLog.setLevel(PathLog.Level.NOTICE, PathLog.thisModule())
+#PathLog.trackModule(PathLog.thisModule())
+
 class MKServiceContainer(MKObserverable):
-    def __init__(self):
+    def __init__(self, valid):
         super().__init__()
+        self.valid = valid
 
     def __getitem__(self, path):
-        try:
-            attr = self.__getattribute__(path[0])
-            return returnAttribute(attr, path[1:])
-        except:
-            print("unknown container path = %s (%s)" % (path, self))
-            raise
+        if self.valid:
+            try:
+                attr = self.__getattribute__(path[0])
+                return returnAttribute(attr, path[1:])
+            except:
+                PathLog.error("unknown container path = %s (%s)" % (path, self))
+                traceback.print_stack()
+                raise
+        return None
 
 class minmax(MKServiceContainer):
     def __init__(self, min, max, default=None):
-        super().__init__()
+        super().__init__(True)
         self.min = min
         self.max = max
         self.default = default
@@ -103,7 +114,7 @@ def returnAttribute(attr, path):
 
 class MKAxisConfig(MKServiceContainer):
     def __init__(self, axis):
-        super().__init__()
+        super().__init__(True)
         self.index = axis.index
         self.limit = minmax(axis.min_position_limit, axis.max_position_limit)
         self.ferror = minmax(axis.min_ferror, axis.max_ferror)
@@ -126,7 +137,7 @@ class MKAxisConfig(MKServiceContainer):
 
 class MKAxis(MKServiceContainer):
     def __init__(self, axis):
-        super().__init__()
+        super().__init__(True)
         self.index = axis.index
         self.enabled = axis.enabled
         self.fault = axis.fault
@@ -165,8 +176,7 @@ class MKAxis(MKServiceContainer):
 
 class MKServiceStatusHandler(MKServiceContainer):
     def __init__(self):
-        super().__init__()
-        self.valid = False
+        super().__init__(False)
         self.fullUpdated = []
 
     def isValid(self):
@@ -176,12 +186,18 @@ class MKServiceStatusHandler(MKServiceContainer):
         obj = self.handlerObject(container)
         updated = self.fullUpdated
         if container.type == MT_EMCSTAT_FULL_UPDATE:
+            PathLog.debug("update full: %s" % self.topicName())
             updated = self.processFull(obj)
             self.fullUpdated = updated
             self.valid = True
         elif self.isValid():
+            PathLog.debug("update incr: %s" % self.topicName())
             updated = self.processIncremental(obj)
-        self.notifyObservers(updated)
+        else:
+            PathLog.debug("update ignd: %s" % self.topicName())
+            updated = None
+        if updated:
+            self.notifyObservers(updated)
 
     def handlerObject(self, container):
         return container
@@ -541,7 +557,9 @@ class MKServiceStatus(MKServiceSubscribe):
             return self.handler[path[0]][path[1:]]
         return self.handler[path[0]]
 
-    def isValid(self, topics):
+    def isValid(self, topics=None):
+        if topics is None:
+            topics = self.topicNames()
         for topic in topics:
             handler = self.handler.get(topic)
             if handler is None or not handler.isValid():
@@ -560,7 +578,7 @@ class MKServiceStatus(MKServiceSubscribe):
         elif container.HasField('emc_status_task'):
             self.handler['task'].process(container)
         else:
-            print("status[%s]: %s" % (container.type, [s[0].name for s in container.ListFields()]))
+            PathLog.notice("status[%s]: %s" % (container.type, [s[0].name for s in container.ListFields()]))
 
     def ping(self):
         for observer in self.pingme:
