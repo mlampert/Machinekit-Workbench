@@ -1,0 +1,87 @@
+#!/usr/bin/python
+
+import Adafruit_BBIO.GPIO as GPIO
+import hal
+import linuxcnc as mk
+import time
+
+pinx = 'P2_34'
+pinX = 'P2_33'
+piny = 'P2_32'
+pinY = 'P2_31'
+pinz = 'P2_30'
+pinZ = 'P2_29'
+
+GPIO.setup(pinx, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+GPIO.setup(pinX, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+GPIO.setup(piny, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+GPIO.setup(pinY, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+GPIO.setup(pinz, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+GPIO.setup(pinZ, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+
+comp = hal.component('pyremote')
+#comp.newpin('jogx', hal.HAL_BIT, hal.HAL_IN)
+#comp.newpin('jogX', hal.HAL_BIT, hal.HAL_IN)
+#comp.newpin('jogy', hal.HAL_BIT, hal.HAL_IN)
+#comp.newpin('jogY', hal.HAL_BIT, hal.HAL_IN)
+#comp.newpin('jogz', hal.HAL_BIT, hal.HAL_IN)
+#comp.newpin('jogZ', hal.HAL_BIT, hal.HAL_IN)
+comp.ready()
+
+cmd = mk.command()
+
+joggingX = 0
+joggingY = 0
+joggingZ = 0
+
+try:
+    while True:
+        time.sleep(0.1)
+
+        if GPIO.input(pinx):
+            if joggingX != 1:
+                cmd.mode(linuxcnc.MODE_MANUAL)
+                cmd.jog(mk.JOG_CONTINUOUS, 0, 1)
+                joggingX = 1
+        elif GPIO.input(pinX):
+            if joggingX != -1:
+                cmd.mode(linuxcnc.MODE_MANUAL)
+                cmd.jog(mk.JOG_CONTINUOUS, 0, -1)
+                joggingX = -1
+        elif joggingX != 0:
+            cmd.mode(linuxcnc.MODE_MANUAL)
+            cmd.jog(mk.JOG_STOP, 0)
+            joggingX = 0
+
+        if GPIO.input(piny):
+            if joggingY != 1:
+                cmd.mode(linuxcnc.MODE_MANUAL)
+                cmd.jog(mk.JOG_CONTINUOUS, 1, 1)
+                joggingY = 1
+        elif GPIO.input(pinY):
+            if joggingY != -1:
+                cmd.mode(linuxcnc.MODE_MANUAL)
+                cmd.jog(mk.JOG_CONTINUOUS, 1, -1)
+                joggingY = -1
+        elif joggingY != 0:
+            cmd.mode(linuxcnc.MODE_MANUAL)
+            cmd.jog(mk.JOG_STOP, 1)
+            joggingY = 0
+
+        if GPIO.input(pinz):
+            if joggingZ != 1:
+                cmd.mode(linuxcnc.MODE_MANUAL)
+                cmd.jog(mk.JOG_CONTINUOUS, 2, 1)
+                joggingZ = 1
+        elif GPIO.input(pinZ):
+            if joggingZ != -1:
+                cmd.mode(linuxcnc.MODE_MANUAL)
+                cmd.jog(mk.JOG_CONTINUOUS, 2, -1)
+                joggingZ = -1
+        elif joggingZ != 0:
+            cmd.mode(linuxcnc.MODE_MANUAL)
+            cmd.jog(mk.JOG_STOP, 2)
+            joggingZ = 0
+
+except KeyboardInterrupt:
+    raise SystemExit

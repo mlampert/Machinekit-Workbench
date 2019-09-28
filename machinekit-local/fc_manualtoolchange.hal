@@ -1,0 +1,14 @@
+newcomp fc_manualtoolchange timer=100
+newpin fc_manualtoolchange fc_manualtoolchange.change bit in
+newpin fc_manualtoolchange fc_manualtoolchange.changed bit out
+newpin fc_manualtoolchange fc_manualtoolchange.number s32 in
+ready fc_manualtoolchange
+
+# in case they were linked already
+unlinkp iocontrol.0.tool-change
+unlinkp iocontrol.0.tool-changed
+
+net tool-change fc_manualtoolchange.change iocontrol.0.tool-change
+net tool-changed fc_manualtoolchange.changed iocontrol.0.tool-changed
+net tool-prep-number fc_manualtoolchange.number iocontrol.0.tool-prep-number
+

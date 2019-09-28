@@ -84,7 +84,7 @@ class MKServiceHalStatus(MKServiceSubscribe):
     def topicNames(self):
         # the simplest way to figure out if there is a manual tool change is to
         # subscribe to it - there will be an error if it doesn't exist
-        return ['hal_manualtoolchange']
+        return ['fc_manualtoolchange']
 
     def topicName(self):
         return 'halrcomp'
@@ -93,7 +93,7 @@ class MKServiceHalStatus(MKServiceSubscribe):
         #print(container)
         if container.type ==  TYPES.MT_HALRCOMP_ERROR:
             for note in container.note:
-                if 'hal_manualtoolchange' in note and 'does not exist' in note:
+                if 'fc_manualtoolchange' in note and 'does not exist' in note:
                     # this will be the last time the service sends a message
                     PathLog.info('no manual tool change')
                 else:
@@ -101,7 +101,7 @@ class MKServiceHalStatus(MKServiceSubscribe):
 
         elif container.type == TYPES.MT_HALRCOMP_FULL_UPDATE:
             for comp in container.comp:
-                if comp.name == 'hal_manualtoolchange':
+                if comp.name == 'fc_manualtoolchange':
                     PathLog.info('manual tool change detected')
                     self.toolChange = ComponentManualToolChange(comp)
         elif container.type == TYPES.MT_HALRCOMP_INCREMENTAL_UPDATE and self.toolChange:
