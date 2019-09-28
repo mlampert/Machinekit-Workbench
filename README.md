@@ -5,7 +5,7 @@ At least that's what it's supposed to be once it grows up - which might take a b
 
 There are currently 4 interfaces available:
 * Hud     ... Head Up Display of coordinates and tool in the 3d view
-* Setup   ... jogging and setting the coordinate offset
+* Jog     ... jogging and setting the coordinate offset
 * Execute ... load, run/pause/stop Path Jobs in MK
 * MDI     ... console interface to issue MDI commands
 
@@ -14,8 +14,8 @@ The Hud is pretty straight forward and currently non-configurable. The tool is b
 is not turned on or the spindle speed is `0`. If the spindle is enabled and it's speed is not `0` it turns
 red-ish.
 
-## Setup
-The Setup dock widget provides an interface to jog the tool around and to set the offset of the coordinate system.
+## Jog
+The Jog dock widget provides an interface to jog the tool around and to set the offset of the coordinate system.
 It's title inidcates the name of the MK instance it is connected to.
 
 ### DRO
@@ -25,11 +25,11 @@ spinbox and activating it by pressing the corresponding axis button.
 Shortcut buttons are available to set the coordinate(s) to `0`
 
 ### Jog
-The `Z` and `XY` buttons jog the tool to the `0` position of the respective axes. If `Continuous` is pressed
+The `Z` and `XY` buttons jog the tool to the `0` position of the respective axes. If `Continuous` is selected
 jogging continues for as long as a button is pressed, otherwise the fixed distance of the combo box is jogged
 in the button's direction.
 
-While `Move Gantry` is pressed the user can click a point in the 3d view and MK will jog the tool to that location.
+While `Jog To` is pressed the user can click a point in the 3d view and MK will jog the tool to that location.
 Initially only the `XY` axes are modified - however a second click on the same location also jogs the `Z` axis.
 
 ## Execute
@@ -64,7 +64,7 @@ machinekit.ERROR: Can't issue MDI command when not homed
 * machinekit-hal-posix
 
 The only part used from `machinekit-hal-posix` are the Machinetalk python bindings. Unfortunately only
-Python 2 bindings are installed but since it's all pure python we get away with a little manuall _installation_:
+Python 2 bindings are installed. However, since it's all pure python we get away with a little manuall _installation_:
 
 ```
 sudo cp -r /usr/lib/python2.7/dist-packages/machinetalk /usr/lib/python3/dist-packages
