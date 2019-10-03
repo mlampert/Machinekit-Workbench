@@ -19,7 +19,7 @@ from MKServiceStatus    import *
 from MKServiceHal       import *
 
 PathLog.setLevel(PathLog.Level.NOTICE, PathLog.thisModule())
-#PathLog.trackModule(PathLog.thisModule())
+PathLog.trackModule(PathLog.thisModule())
 
 AxesForward  = ['X', 'Y', 'Z', 'A', 'B', 'C', 'U', 'V', 'W']
 AxesBackward = ['x', 'y', 'z', 'a', 'b', 'c', 'u', 'v', 'w']
@@ -54,6 +54,9 @@ class ServiceConnector(PySide.QtCore.QObject):
 
     def separate(self):
         self.updated.disconnect()
+
+    def disconnect(self):
+        super().disconnect(self)
 
 class _Endpoint(object):
     '''POD for describing a service end point.'''
@@ -141,7 +144,7 @@ class _ManualToolChangeNotifier(object):
         return None
 
 class _Thread(PySide.QtCore.QThread):
-    '''Internal class to poll for messages from MK. DO NOT USE.'''
+    '''Internal class to poll for messages from MK. DO NOT USE manually.'''
 
     def __init__(self, mk):
         super(_Thread, self).__init__()
@@ -181,8 +184,8 @@ class _Thread(PySide.QtCore.QThread):
 
 
 class Machinekit(object):
-    '''Main interface to the services of a MK instance. Tracks the dynamic registration and unregistration of services
-    and prints the error messages to the log stream.'''
+    '''Main interface to the services of a MK instance.
+Tracks the dynamic registration and unregistration of services and prints the error messages to the log stream.'''
 
     def __init__(self, uuid, properties):
         super(self.__class__, self).__init__()
@@ -192,7 +195,6 @@ class Machinekit(object):
         self.endpoint = {}
         self.lock = threading.Lock()
         self.service = {}
-        # setup zmq
         self.context = zmq.Context()
         self.poller = zmq.Poller()
         self.quit = False
@@ -207,27 +209,29 @@ class Machinekit(object):
 
     def __getitem__(self, index):
         path = index.split('.')
-        service = self.service.get(path[0])
-        if service:
+        s = self.service.get(path[0])
+        if s:
             if len(path) > 1:
-                return service[path[1:]]
-            return service
+                return s[path[1:]]
+            return s
         return None
 
     def _addService(self, properties, name, address, port):
-        service = properties[b'service']
+        PathLog.track(name)
+        s = properties[b'service']
         with self.lock:
-            endpoint = _Endpoint(service, name, address, port, properties)
-            self.endpoint[service.decode()] = endpoint
+            endpoint = _Endpoint(s, name, address, port, properties)
+            self.endpoint[s.decode()] = endpoint
             self.quit = False
             if self.thread is None:
                 self.thread = _Thread(self)
                 self.thread.start()
-        if service in [b'error', b'status']:
-            s = self.connectWith(service.decode())
-        return (service, endpoint)
+        if s in [b'error', b'status']:
+            s = self.connectWith(s.decode())
+        return (s, endpoint)
 
     def _removeService(self, name):
+        PathLog.track(name)
         with self.lock:
             if name == 'error' and self.error:
                 self.error.separate()
@@ -242,10 +246,11 @@ class Machinekit(object):
             if 0 == len(self.endpoint):
                 self.quit = True
         if self.quit and self.thread:
-            self.thread.join()
+            self.thread.wait()
             self.thread = None
 
     def changed(self, service, msg):
+        PathLog.track(service)
         display = PathLog.info
         if msg.isError():
             display = PathLog.error
@@ -326,7 +331,7 @@ class _ServiceMonitor(object):
                 mk = Machinekit(uuid, info.properties)
                 self.machinekit[uuid] = mk
             service, endpoint = mk._addService(info.properties, info.name, info.address, info.port)
-            PathLog.info("machinetalk.%-13s %s:%d" % (service.decode(), endpoint.address(), endpoint.port()))
+            #PathLog.info("machinetalk.%-13s %s:%d" % (service.decode(), endpoint.address(), endpoint.port()))
         else:
             name = ' '.join(itertools.takewhile(lambda s: s != 'service', info.name.split()))
             PathLog.info("machinetalk.%-13s - no info" % (name))
