@@ -6,10 +6,10 @@ import MachinekitJog
 import PathScripts.PathLog as PathLog
 import machinekit
 
-from PySide import QtCore
+from PySide import QtCore, QtGui
 
 PathLog.setLevel(PathLog.Level.INFO, PathLog.thisModule())
-#PathLog.trackModule(PathLog.thisModule())
+PathLog.trackModule(PathLog.thisModule())
 
 Dock = None
 
@@ -19,26 +19,21 @@ class MachinekitCommand(object):
         self.name = name
         self.services = services
 
-    def validMachinekit(self):
-        mk = machinekit.Any()
-        if mk and mk.isValid():
-            return mk
-        return None
-
     def IsActive(self):
-        PathLog.track(self.name)
-        return not self.validMachinekit() is None
+        #PathLog.track(self.name)
+        return not machinekit.Active() is None
 
     def Activated(self):
         global Dock
         PathLog.track(self.name)
         dock = None
-        instances = machinekit.Instances(self.serviceNames())
-        if 0 == len(instances):
-            PathLog.debug('No machinekit instances found')
-            pass
-        if 1 == len(instances):
-            dock = self.activate(instances[0])
+
+        mk = machinekit.Active()
+        if mk:
+            dock = self.activate(mk)
+        else:
+            PathLog.debug('No machinekit instance active')
+
         if dock is None:
             PathLog.debug('No dock to activate')
         else:
@@ -93,8 +88,8 @@ class MachinekitCommandHud(MachinekitCommand):
         super(self.__class__, self).__init__('Hud', ['command', 'status'])
 
     def IsActive(self):
-        PathLog.track(self.name)
-        return not (self.validMachinekit() is None or FreeCADGui.ActiveDocument is None)
+        #PathLog.track(self.name)
+        return not (machinekit.Active() is None or FreeCADGui.ActiveDocument is None)
 
     def activate(self, mk):
         MachinekitHud.ToggleHud(mk)
@@ -108,16 +103,23 @@ class MachinekitCommandHud(MachinekitCommand):
 
 
 class MachinekitCommandPower(MachinekitCommand):
-    def __init__(self):
+    def __init__(self, on):
         super(self.__class__, self).__init__('Pwr', ['command', 'status'])
+        self.on = on
+
+    def IsActive(self):
+        #PathLog.track(self.name)
+        mk = machinekit.Active()
+        if mk:
+            return mk.isPowered() != self.on
+        return False
 
     def activate(self, mk):
         machinekit.Power(mk)
 
     def GetResources(self):
         return {
-                'Pixmap'    : machinekit.FileResource('machinekiticon.png'),
-                'MenuText'  : 'Power',
+                'MenuText'  : "Power %s" % ('ON' if self.on else 'OFF'),
                 'ToolTip'   : 'Turn machinekit controller on/off'
                 }
 
@@ -126,8 +128,8 @@ class MachinekitCommandHome(MachinekitCommand):
         super(self.__class__, self).__init__('Home', ['command', 'status'])
 
     def IsActive(self):
-        PathLog.track(self.name)
-        mk = self.validMachinekit()
+        #PathLog.track(self.name)
+        mk = machinekit.Active()
         if mk:
             return mk.isPowered() and not mk.isHomed()
         return False
@@ -137,14 +139,41 @@ class MachinekitCommandHome(MachinekitCommand):
 
     def GetResources(self):
         return {
-                'Pixmap'    : machinekit.FileResource('machinekiticon.png'),
                 'MenuText'  : 'Home',
                 'ToolTip'   : 'Home all axes'
                 }
 
+class MachinekitCommandActivate(MachinekitCommand):
+    MenuText = 'Activate'
+
+    def __init__(self):
+        super(self.__class__, self).__init__('Activate', None)
+
+    def activate(self, mk):
+        machinekit.Activate(mk)
+
+    def GetResources(self):
+        return {
+                'MenuText'  : self.MenuText,
+                'ToolTip'   : 'Make Machinekit active'
+                }
+
+class MachinekitCommandActivateNone(MachinekitCommand):
+    MenuText = '--no MK found--'
+
+    def __init__(self):
+        super(self.__class__, self).__init__('None', None)
+
+    def IsActive(self):
+        return False
+
+    def GetResources(self):
+        return { 'MenuText'  : self.MenuText }
+
 ToolbarName  = 'MachinekitTools'
-ToolbarTools = ['MachinekitCommandHud', 'MachinekitCommandJog', 'MachinekitCommandExecute']
-MenuList     = ['MachinekitCommandPower', 'MachinekitCommandHome', 'Separator'] + ToolbarTools
+ToolbarTools = [MachinekitCommandHud.__name__, MachinekitCommandJog.__name__, MachinekitCommandExecute.__name__]
+MenuName     = 'Machine&kit'
+MenuList     = [MachinekitCommandHome.__name__, 'Separator'] + ToolbarTools
 
 class MachinekitCommandCenter(object):
     def __init__(self):
@@ -152,11 +181,14 @@ class MachinekitCommandCenter(object):
         self.timer.timeout.connect(self.tick)
         self.commands = []
 
-        self._addCommand('MachinekitCommandPower',   MachinekitCommandPower())
-        self._addCommand('MachinekitCommandHome',    MachinekitCommandHome())
-        self._addCommand('MachinekitCommandHud',     MachinekitCommandHud())
-        self._addCommand('MachinekitCommandJog',     MachinekitCommandJog())
-        self._addCommand('MachinekitCommandExecute', MachinekitCommandExecute())
+        self._addCommand(MachinekitCommandActivate.__name__,       MachinekitCommandActivate())
+        self._addCommand(MachinekitCommandActivateNone.__name__,   MachinekitCommandActivateNone())
+        self._addCommand(MachinekitCommandPower.__name__ + 'ON',   MachinekitCommandPower(True))
+        self._addCommand(MachinekitCommandPower.__name__ + 'OFF',  MachinekitCommandPower(False))
+        self._addCommand(MachinekitCommandHome.__name__,           MachinekitCommandHome())
+        self._addCommand(MachinekitCommandHud.__name__,            MachinekitCommandHud())
+        self._addCommand(MachinekitCommandJog.__name__,            MachinekitCommandJog())
+        self._addCommand(MachinekitCommandExecute.__name__,        MachinekitCommandExecute())
 
         self.active = [cmd.IsActive() for cmd in self.commands]
 
@@ -179,6 +211,44 @@ class MachinekitCommandCenter(object):
             PathLog.info("Command activation changed from %s to %s" % (aString(self.active), aString(active)))
             FreeCADGui.updateCommands()
             self.active = active
+        machinekit.update()
+        self.refreshActivationMenu()
+
+    def refreshActivationMenu(self):
+        menu = FreeCADGui.getMainWindow().menuBar().findChild(QtGui.QMenu, MenuName)
+        if menu:
+            mks = [mk for mk in machinekit.Instances() if mk.isValid()]
+            ma = menu.findChild(QtGui.QMenu, MachinekitCommandActivate.MenuText)
+            actions = ma.actions()
+            if mks:
+                mkNames = [mk.name() for mk in mks]
+                for action in actions:
+                    name = action.text()
+                    if name in mkNames:
+                        mkNames.remove(name)
+                        mk = [mk for mk in mks if mk.name() == name][0]
+                        action.setEnabled(mk != machinekit.Active())
+                    else:
+                        ma.removeAction(action)
+                for name in mkNames:
+                    mk = [mk for mk in mks if mk.name() == name][0]
+                    action = QtGui.QAction(name, ma)
+                    action.setEnabled(mk != machinekit.Active())
+                    PathLog.track(mk.name(), [s for s in mk.endpoint])
+                    action.triggered.connect(lambda x=False, mk=mk: self.activate(mk))
+                    ma.addAction(action)
+            else:
+                if 1 != len(actions) or actions[0].objectName() != MachinekitCommandActivateNone.__name__:
+                    for action in actions:
+                        ma.removeAction(action)
+                    action = QtGui.QAction(MachinekitCommandActivateNone.MenuText, ma)
+                    action.setEnabled(False)
+                    ma.addAction(action)
+
+    def activate(self, mk):
+        PathLog.track(mk)
+        machinekit.Activate(mk)
+        self.refreshActivationMenu()
 
 _commandCenter = MachinekitCommandCenter()
 
@@ -191,3 +261,11 @@ def Deactivated():
     PathLog.track()
     _commandCenter.stop()
 
+
+def SetupToolbar(workbench):
+    workbench.appendToolbar(ToolbarName, ToolbarTools)
+
+def SetupMenu(workbench):
+    workbench.appendMenu([MenuName, 'Activate'], [MachinekitCommandActivateNone.__name__])
+    workbench.appendMenu([MenuName, 'Power'], ['MachinekitCommandPowerON', 'MachinekitCommandPowerOFF'])
+    workbench.appendMenu([MenuName], MenuList)

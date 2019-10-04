@@ -23,7 +23,6 @@ class Jog(object):
 
     def __init__(self, mk):
         PathLog.track()
-        machinekit.jog = self
         self.mk = mk
         self.ui = FreeCADGui.PySideUic.loadUi(machinekit.FileResource('jog.ui'))
         palette = PySide.QtGui.QPalette()
@@ -80,10 +79,9 @@ class Jog(object):
 
         FreeCADGui.Selection.addObserver(self)
 
-        if self.isConnected():
-            self.setupUI()
-        else:
-            self.isSetup = False
+        self.isSetup = False
+        self.updateUI()
+        machinekit.jog = self
 
     def setupUI(self):
         PathLog.track()

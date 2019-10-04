@@ -217,8 +217,8 @@ Tracks the dynamic registration and unregistration of services and prints the er
         return None
 
     def _addService(self, properties, name, address, port):
-        PathLog.track(name)
         s = properties[b'service']
+        PathLog.track(s, name)
         with self.lock:
             endpoint = _Endpoint(s, name, address, port, properties)
             self.endpoint[s.decode()] = endpoint
@@ -285,7 +285,7 @@ Tracks the dynamic registration and unregistration of services and prints the er
         return [self.connectWith(s) for s in services]
 
     def isValid(self):
-        return not (self['status'] is None or not self['status'].isValid() or self['halrcmd'] is None)
+        return not (self['status'] is None or not self['status'].isValid() or self.endpoint.get('halrcmd') is None)
 
     def isPowered(self):
         return (not self['status.io.estop']) and self['status.motion.enabled']
@@ -306,6 +306,9 @@ Tracks the dynamic registration and unregistration of services and prints the er
             sequence = taskModeMDI(self)
             sequence.append(MKCommandTaskExecute(cmd))
             command.sendCommands(sequence)
+
+    def name(self):
+        return self['status.config.name']
 
 class _ServiceMonitor(object):
     '''Singleton for the zeroconf service discovery. DO NOT USE.'''
@@ -400,67 +403,100 @@ def Instances(services=None):
     If no services are requested all discovered MK instances are returned.'''
     return _ServiceMonitor.Instance().instances(services)
 
+_active = None
+
+def Activate(mk):
+    '''Activate(mk) ... makes the given machinekit instance the currently active one.
+All communication and commands are for the activated MK instance. If there is only one
+MK instance it is automatically used as the active MK instance.'''
+    global _active
+    PathLog.track(mk)
+    _active = mk
+    if hud:
+        hud.updateUI()
+    if jog:
+        jog.updateUI()
+    if execute:
+        execute.updateUI()
+
+
+def update():
+    for mk in [inst for inst in Instances() if inst.isValid()]:
+        mtc = mk.manualToolChangeNotifier
+        if not mtc.isConnected():
+            mtc.connect()
+        if not mk.error and mk['error']:
+            mk.error = ServiceConnector(mk.connectWith('error'), mk)
+
+def Active():
+    '''Active() ... return the currently active MK instance.
+If there is only instance it is automatically used as the active one.'''
+    global _active
+    if _active and not _active.isValid():
+        _active = None
+        if hud:
+            hud.updateUI()
+        if jog:
+            jog.updateUI()
+        if execute:
+            execute.updateUI()
+
+    return _active
+
 def Any():
     '''Any() ... returns a Machinekit instance, if at least one was discovered.'''
-    # this function gets called periodically through the MachineCommands observers
-    # we'll abuse it to connect manual tool changer, which has to happen in the main
-    # thread - otherwise the notifications vanish into thin air
-    mks = _ServiceMonitor.Instance().instances(None)
+    mks = [inst for inst in _ServiceMonitor.Instance().instances(None) if inst.isValid()]
     if mks:
-        for mk in mks:
-            mtc = mk.manualToolChangeNotifier
-            if not mtc.isConnected():
-                mtc.connect()
-            if not mk.error and mk['error']:
-                mk.error = ServiceConnector(mk.connectWith('error'), mk)
         return mks[0]
     return None
 
-def Power(mk=None):
-    '''Power(mk=None) ... unlocks estop and toggles power, if no MK instance is provided Any() is used.'''
-    if mk is None:
-        mk = Any()
-    status = mk.connectWith('status')
-    command = mk.connectWith('command')
+def Power(mk):
+    '''Power() ... unlocks estop and toggles power of the given MK'''
+    if not mk:
+        mk = Active()
+    if mk:
+        status = mk.connectWith('status')
+        command = mk.connectWith('command')
 
-    commands = []
-    if status['io.estop']:
-        commands.append(MKCommandEstop(False))
-    commands.append(MKCommandPower(not mk.isPowered()))
-    command.sendCommands(commands)
+        commands = []
+        if status['io.estop']:
+            commands.append(MKCommandEstop(False))
+        commands.append(MKCommandPower(not mk.isPowered()))
+        command.sendCommands(commands)
 
-def Home(mk=None):
-    '''Home(mk=None) ... homes all axis, if no MK instance is provided Any() is used.'''
-    if mk is None:
-        mk = Any()
-    status = mk.connectWith('status')
-    command = mk.connectWith('command')
+def Home(mk):
+    '''Home(mk) ... homes all axis of the given MK'''
+    if not mk:
+        mk = Active()
+    if mk:
+        status = mk.connectWith('status')
+        command = mk.connectWith('command')
 
-    sequence = [[cmd] for cmd in taskModeManual(status)]
-    toHome = [axis.index for axis in status['motion.axis'] if not axis.homed]
-    order  = {}
+        sequence = [[cmd] for cmd in taskModeManual(status)]
+        toHome = [axis.index for axis in status['motion.axis'] if not axis.homed]
+        order  = {}
 
-    for axis in status['config.axis']:
-        if axis.index in toHome:
-            batch = order.get(axis.home_sequence)
-            if batch is None:
-                batch = []
-            batch.append(axis.index)
-            order[axis.home_sequence] = batch
+        for axis in status['config.axis']:
+            if axis.index in toHome:
+                batch = order.get(axis.home_sequence)
+                if batch is None:
+                    batch = []
+                batch.append(axis.index)
+                order[axis.home_sequence] = batch
 
-    for key in sorted(order):
-        batch = order[key]
-        sequence.append([MKCommandAxisHome(index, True) for index in batch])
-        for index in batch:
-            sequence.append([MKCommandWaitUntil(lambda index=index: status["motion.axis.%d.homed" % index])])
+        for key in sorted(order):
+            batch = order[key]
+            sequence.append([MKCommandAxisHome(index, True) for index in batch])
+            for index in batch:
+                sequence.append([MKCommandWaitUntil(lambda index=index: status["motion.axis.%d.homed" % index])])
 
-    command.sendCommandSequence(sequence)
+        command.sendCommandSequence(sequence)
 
-def MDI(cmd, mk=None):
-    '''MID(cmd, mk=None) ... executes cmd on the provided MK instance, if no MK is provided Any() is used.'''
-    if mk is None:
-        mk = Any()
-    mk.mdi(cmd)
+def MDI(cmd):
+    '''MID(cmd, mk=None) ... executes cmd on the active MK'''
+    mk = Active()
+    if mk:
+        mk.mdi(cmd)
 
 
 # these are for debugging and development - do not use

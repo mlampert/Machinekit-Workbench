@@ -7,9 +7,8 @@ class MachinekitWorkbench(Workbench):
 
     def Initialize(self):
         import MachinekitCommands
-        self.appendToolbar(MachinekitCommands.ToolbarName, MachinekitCommands.ToolbarTools)
-        #self.appendCommandbar("MachinekitCommands", MachinekitCommands.MenuList)
-        self.appendMenu("Machinekit", MachinekitCommands.MenuList)
+        MachinekitCommands.SetupToolbar(self)
+        MachinekitCommands.SetupMenu(self)
         pass
 
     def Activated(self):
