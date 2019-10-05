@@ -11,6 +11,7 @@ import ftplib
 import machinekit
 import machinetalk.protobuf.motcmds_pb2 as MOTCMDS
 import machinetalk.protobuf.status_pb2 as STATUS
+import machinetalk.protobuf.types_pb2 as TYPES
 
 from MKCommand import *
 from MKServiceCommand import *
@@ -276,7 +277,7 @@ class Execute(object):
                     self.ui.pause.setChecked(self.isPaused())
                 self.ui.stop.setEnabled(True)
 
-            mode = STATUS.EmcTaskModeType.Name(self['status.task.task.mode']).split('_')[3].lower()
+            mode = TYPES.RCS_STATUS.Name(self['status.motion.state']).split('_')[1].lower()
             state = ' '.join(STATUS.EmcTaskExecStateType.Name(self['status.task.state']).split('_')[3:]).lower()
             if mode == 'auto':
                 istate = STATUS.EmcInterpStateType.Name(self['status.interp.state']).split('_')[3].lower()

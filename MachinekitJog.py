@@ -6,11 +6,14 @@ import PySide.QtCore
 import PySide.QtGui
 import machinekit
 import machinetalk.protobuf.status_pb2 as STATUS
+import machinetalk.protobuf.types_pb2 as TYPES
 
 from MKCommand import *
 
 PathLog.setLevel(PathLog.Level.DEBUG, PathLog.thisModule())
 #PathLog.trackModule(PathLog.thisModule())
+
+Tolerance = 0.01
 
 EmcLinearUnits = {
         STATUS.EmcLinearUnitsType.Value('LINEAR_UNITS_INCH') : 'in',
@@ -66,13 +69,13 @@ class Jog(object):
         setupJogButton(self.ui.jogStop, '', 'stop.svg',    lambda : self.jogAxesStop())
 
         buttonWidth = self.ui.setX.size().height()
-        setupSetButton(self.ui.setX,      'X', self.ui.posX, buttonWidth)
-        setupSetButton(self.ui.setY,      'Y', self.ui.posY, buttonWidth)
-        setupSetButton(self.ui.setZ,      'Z', self.ui.posZ, buttonWidth)
-        setupSetButton(self.ui.setX0,     'X',         None, buttonWidth)
-        setupSetButton(self.ui.setY0,     'Y',         None, buttonWidth)
-        setupSetButton(self.ui.setZ0,     'Z',         None, buttonWidth)
-        setupSetButton(self.ui.setXYZ0, 'XYZ',         None, buttonWidth)
+        setupSetButton(self.ui.setX,      'x', self.ui.posX, buttonWidth)
+        setupSetButton(self.ui.setY,      'y', self.ui.posY, buttonWidth)
+        setupSetButton(self.ui.setZ,      'z', self.ui.posZ, buttonWidth)
+        setupSetButton(self.ui.setX0,     'x',         None, buttonWidth)
+        setupSetButton(self.ui.setY0,     'y',         None, buttonWidth)
+        setupSetButton(self.ui.setZ0,     'z',         None, buttonWidth)
+        setupSetButton(self.ui.setXYZ0, 'xyz',         None, buttonWidth)
         self.ui.jogStop.setIconSize(PySide.QtCore.QSize(3 * buttonWidth, 3 * buttonWidth))
 
         self.jogGoto = None
@@ -127,10 +130,14 @@ class Jog(object):
         PathLog.track()
         commands = machinekit.taskModeMDI(self)
 
-        cmds = ['G10', 'L20', 'P1']
+        cmds = ['G10', 'L20', 'P0']
         for l in label:
-            cmds.append("%s%f" % (l, 0 if widget is None else widget.value()))
+            value = 0 if widget is None else widget.value()
+            offset = self["status.motion.offset.g5x.%s" % l]
+            PathLog.debug("set pos[%s]=%.2f  (%.2f)" % (l, value, offset))
+            cmds.append("%s%g" % (l, value))
         code = ' '.join(cmds)
+        PathLog.debug("set pos-%s: '%s'" % (label, code))
         commands.append(MKCommandTaskExecute(code))
 
         self.cmd.sendCommands(commands)
@@ -219,11 +226,11 @@ class Jog(object):
 
     def _jogXYCmdsFromTo(self, start, end):
         jog = []
-        if not PathGeom.isRoughly(start.x, end.x):
+        if not PathGeom.isRoughly(start.x, end.x, Tolerance):
             PathLog.debug("jog x from %.2f to %.2f" % (start.x, end.x))
             index, velocity = self.getJogIndexAndVelocity('x')
             jog.append(MKCommandAxisJog(index, velocity, start.x - end.x))
-        if not PathGeom.isRoughly(start.y, end.y):
+        if not PathGeom.isRoughly(start.y, end.y, Tolerance):
             PathLog.debug("jog y from %.2f to %.2f" % (start.y, end.y))
             index, velocity = self.getJogIndexAndVelocity('y')
             jog.append(MKCommandAxisJog(index, velocity, start.y - end.y))
@@ -232,15 +239,15 @@ class Jog(object):
     # Selection.Observer
     def addSelection(self, doc, obj, sub, pnt):
         PathLog.track()
-        if self.ui.jogGoto.isChecked():
+        if self.ui.jogGoto.isChecked() and self['status.motion.state'] == TYPES.RCS_DONE:
             x = pnt[0]
             y = pnt[1]
             z = pnt[2]
             mkx = self.displayPos('x')
             mky = self.displayPos('y')
             mkz = self.displayPos('z')
-            if PathGeom.isRoughly(x, mkx) and PathGeom.isRoughly(y, mky):
-                if not PathGeom.isRoughly(z, mkz):
+            if PathGeom.isRoughly(x, mkx, Tolerance) and PathGeom.isRoughly(y, mky, Tolerance):
+                if not PathGeom.isRoughly(z, mkz, Tolerance):
                     # only jog the Z axis if XY already match
                     index, velocity = self.getJogIndexAndVelocity('z')
                     jog = [MKCommandAxisJog(index, velocity, mkz - z)]
