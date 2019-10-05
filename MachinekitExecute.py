@@ -1,5 +1,6 @@
 import FreeCAD
 import FreeCADGui
+import PathScripts.PathLog as PathLog
 import PathScripts.PathPost as PathPost
 import PathScripts.PathUtil as PathUtil
 import PySide.QtCore
@@ -13,6 +14,9 @@ import machinetalk.protobuf.status_pb2 as STATUS
 
 from MKCommand import *
 from MKServiceCommand import *
+
+
+PathLog.setLevel(PathLog.Level.DEBUG, PathLog.thisModule())
 
 class TreeSelectionObserver(object):
     def __init__(self, notify):
@@ -315,15 +319,20 @@ class Execute(object):
                     buf.seek(0)
                     line1 = buf.readline().decode()
                     line2 = buf.readline().decode()
+                    PathLog.debug("Line 1: '%s'" % line1)
+                    PathLog.debug("Line 2: '%s'" % line2)
                     if line1.startswith('(FreeCAD.Job: ') and line2.startswith('(FreeCAD.File: '):
                         title    = line1[14:-2]
                         filename = line2[15:-2]
+                        PathLog.debug("Loaded document: '%s' - '%s'" % (filename, title))
                         for docName, doc in FreeCAD.listDocuments().items():
+                            PathLog.debug("Document: '%s' - '%s'" % (docName, doc.FileName))
                             if doc.FileName == filename:
                                 job = doc.getObject(title)
                                 if job:
                                     self.mk.setJob(job)
                                     title = "%s.%s" % (job.Document.Label, job.Label)
+                                    PathLog.info("Job already loaded.")
         self.title.setText(title)
 
     def changed(self, service, updated):

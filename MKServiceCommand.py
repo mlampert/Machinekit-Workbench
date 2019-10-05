@@ -117,6 +117,9 @@ class MKServiceCommand(MKService):
         self.compounds.append(command)
         command.start()
 
+    def abortCommandSequence(self):
+        self.compounds = []
+
     def sendCommands(self, commands):
         if 1 == len(commands):
             self.sendCommand(commands[0])

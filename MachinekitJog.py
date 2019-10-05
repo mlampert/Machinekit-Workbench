@@ -10,7 +10,7 @@ import machinetalk.protobuf.status_pb2 as STATUS
 from MKCommand import *
 
 PathLog.setLevel(PathLog.Level.DEBUG, PathLog.thisModule())
-PathLog.trackModule(PathLog.thisModule())
+#PathLog.trackModule(PathLog.thisModule())
 
 EmcLinearUnits = {
         STATUS.EmcLinearUnitsType.Value('LINEAR_UNITS_INCH') : 'in',
@@ -76,6 +76,8 @@ class Jog(object):
         self.ui.jogStop.setIconSize(PySide.QtCore.QSize(3 * buttonWidth, 3 * buttonWidth))
 
         self.jogGoto = None
+        self.ui.jogScan.clicked.connect(lambda : self.scanJob(True))
+        self.ui.jogScanBackwards.clicked.connect(lambda : self.scanJob(False))
 
         FreeCADGui.Selection.addObserver(self)
 
@@ -212,7 +214,20 @@ class Jog(object):
         PathLog.track()
         sequence = [[cmd] for cmd in machinekit.taskModeManual(self)]
         sequence.append([MKCommandAxisAbort(i) for i in range(3)])
+        self.cmd.abortCommandSequence()
         self.cmd.sendCommandSequence(sequence)
+
+    def _jogXYCmdsFromTo(self, start, end):
+        jog = []
+        if not PathGeom.isRoughly(start.x, end.x):
+            PathLog.debug("jog x from %.2f to %.2f" % (start.x, end.x))
+            index, velocity = self.getJogIndexAndVelocity('x')
+            jog.append(MKCommandAxisJog(index, velocity, start.x - end.x))
+        if not PathGeom.isRoughly(start.y, end.y):
+            PathLog.debug("jog y from %.2f to %.2f" % (start.y, end.y))
+            index, velocity = self.getJogIndexAndVelocity('y')
+            jog.append(MKCommandAxisJog(index, velocity, start.y - end.y))
+        return jog
 
     # Selection.Observer
     def addSelection(self, doc, obj, sub, pnt):
@@ -224,17 +239,18 @@ class Jog(object):
             mkx = self.displayPos('x')
             mky = self.displayPos('y')
             mkz = self.displayPos('z')
-            jog = []
             if PathGeom.isRoughly(x, mkx) and PathGeom.isRoughly(y, mky):
-                # only jog the Z axis if XY already match
-                index, velocity = self.getJogIndexAndVelocity('z')
-                jog.append(MKCommandAxisJog(index, velocity, mkz - z))
+                if not PathGeom.isRoughly(z, mkz):
+                    # only jog the Z axis if XY already match
+                    index, velocity = self.getJogIndexAndVelocity('z')
+                    jog = [MKCommandAxisJog(index, velocity, mkz - z)]
+                    PathLog.debug("jog z from %.2f to %.2f" % (mkz, z))
+                else:
+                    jog = None
+                    PathLog.debug("z already aligned (%.2f), no jogging required" % z)
             else:
                 # by default we just jog X & Y
-                index, velocity = self.getJogIndexAndVelocity('x')
-                jog.append(MKCommandAxisJog(index, velocity, mkx - x))
-                index, velocity = self.getJogIndexAndVelocity('y')
-                jog.append(MKCommandAxisJog(index, velocity, mky - y))
+                jog = self._jogXYCmdsFromTo(FreeCAD.Vector(mkx, mky, 0), FreeCAD.Vector(x, y, 0))
 
             sequence = [[cmd] for cmd in machinekit.taskModeManual(self)]
             sequence.append(jog)
@@ -268,6 +284,9 @@ class Jog(object):
             if not self.isSetup:
                 self.setupUI()
 
+        self.ui.jogScan.setEnabled(not self.mk.getJob() is None)
+        self.ui.jogScanBackwards.setEnabled(not self.mk.getJob() is None)
+
         self.updateDRO(connected, powered)
         self.ui.dockWidgetContents.setEnabled(powered and isIdle)
 
@@ -277,4 +296,47 @@ class Jog(object):
         if self.mk:
             if 'status' in service.topicName():
                 self.updateUI()
+
+    def scanJob(self, forward):
+        PathLog.track()
+        job = self.mk.getJob()
+        if job and hasattr(job, 'Path') and job.Path:
+            bb = job.Path.BoundBox
+            if bb.isValid():
+                mkx = self.displayPos('x')
+                mky = self.displayPos('y')
+                begin = FreeCAD.Vector(mkx, mky, 0)
+                pts = []
+                if forward:
+                    pts.append(FreeCAD.Vector(bb.XMin, bb.YMin, 0))
+                    pts.append(FreeCAD.Vector(bb.XMax, bb.YMin, 0))
+                    pts.append(FreeCAD.Vector(bb.XMax, bb.YMax, 0))
+                    pts.append(FreeCAD.Vector(bb.XMin, bb.YMax, 0))
+                else:
+                    pts.append(FreeCAD.Vector(bb.XMin, bb.YMin, 0))
+                    pts.append(FreeCAD.Vector(bb.XMin, bb.YMax, 0))
+                    pts.append(FreeCAD.Vector(bb.XMax, bb.YMax, 0))
+                    pts.append(FreeCAD.Vector(bb.XMax, bb.YMin, 0))
+
+                dist = [begin.distanceToPoint(p) for p in pts]
+                rot = dist.index(min(dist))
+                pts = pts[rot:] + pts[:rot]
+                pts.append(pts[0])
+                PathLog.info(" begin = (%5.2f, %5.2f)" % (begin.x, begin.y))
+                for i, p in enumerate(pts):
+                    PathLog.info(" pts[%d] = (%5.2f, %5.2f)" % (i, p.x, p.y))
+
+                jog = []
+                if not PathGeom.pointsCoincide(begin, pts[0]):
+                    jog.append(self._jogXYCmdsFromTo(begin, pts[0]))
+                for i, j in zip(pts, pts[1:]):
+                    jog.append(self._jogXYCmdsFromTo(i, j))
+
+                sequence = [[cmd] for cmd in machinekit.taskModeManual(self)]
+                sequence.extend(jog)
+                self.cmd.sendCommandSequence(sequence)
+            else:
+                PathLog.error("BoundBox of job %s is not valid" % job.Label)
+        else:
+            PathLog.error('No job uploaded for scanning')
 
