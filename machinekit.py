@@ -1,5 +1,6 @@
 import FreeCAD
 import FreeCADGui
+import MachinekitInstance
 import PathScripts.PathLog as PathLog
 import PySide.QtCore
 import PySide.QtGui
@@ -57,25 +58,6 @@ class ServiceConnector(PySide.QtCore.QObject):
 
     def disconnect(self):
         super().disconnect(self)
-
-class _Endpoint(object):
-    '''POD for describing a service end point.'''
-
-    def __init__(self, service, name, addr, prt, properties):
-        self.service = service
-        self.name = name
-        self.addr = addr
-        self.prt = prt
-        self.properties = properties
-        self.dsn = properties[b'dsn']
-        self.uuid = properties[b'instance']
-
-    def addressRaw(self):
-        return self.addr
-    def address(self):
-        return "%d.%d.%d.%d" % (self.addr[0], self.addr[1], self.addr[2], self.addr[3])
-    def port(self):
-        return self.prt
 
 class _ManualToolChangeNotifier(object):
     '''Class to prompt user to perform a tool change and confirm its completion.'''
@@ -143,22 +125,89 @@ class _ManualToolChangeNotifier(object):
                     return tc
         return None
 
-class _Thread(PySide.QtCore.QThread):
-    '''Internal class to poll for messages from MK. DO NOT USE manually.'''
+class Machinekit(PySide.QtCore.QObject):
+    statusUpdate    = PySide.QtCore.Signal(object, object)
+    errorUpdate     = PySide.QtCore.Signal(object, object)
+    commandUpdate   = PySide.QtCore.Signal(object, object)
+    halUpdate       = PySide.QtCore.Signal(object, object)
 
-    def __init__(self, mk):
-        super(_Thread, self).__init__()
-        self.mk = mk
-        self.timeout = 100
+    Context = zmq.Context()
+    Poller  = zmq.Poller()
 
-    def run(self):
-        PathLog.info('thread start')
-        while not self.mk.quit:
-            s = dict(self.mk.poller.poll(self.timeout))
-            if s:
-                with self.mk.lock:
-                    for name, service in self.mk.service.items():
-                        if service.socket in s:
+    def __init__(self, instance):
+        super().__init__() # for qt signals
+
+        self.instance = instance
+        self.nam = None
+        self.lock = threading.Lock()
+
+        self.service = {}
+        self.manualToolChangeNotifier = _ManualToolChangeNotifier(self)
+        self.job = None
+
+        for service in _MKServiceRegister:
+            if service:
+                self.service[service] = None
+
+    def __str__(self):
+        with self.lock:
+            return "%s(%s): %s" % (self.name(), self.instance.uuid.decode(), sorted(self.instance.services()))
+
+    def __getitem__(self, index):
+        path = index.split('.')
+        service = self.service.get(path[0])
+        if service:
+            if len(path) > 1:
+                return service[path[1:]]
+            return service
+        return None
+
+    def _update(self):
+        def removeService(s, service):
+            if s and service:
+                self.Poller.unregister(service.socket)
+                self.service[s] = None
+                service.detach(self)
+            return None
+
+        with self.lock:
+            # first check if all services are still available
+            poll = False
+            for s in self.service:
+                ep = self.instance.endpointFor(s)
+                service = self.service.get(s)
+                if ep is None:
+                    if not service is None:
+                        PathLog.debug("Removing stale service: %s.%s" % (self.name(), s))
+                        service = removeService(s, service)
+                else:
+                    if service and ep.dsn != service.dsn:
+                        PathLog.debug("Removing stale service: %s.%s" % (self.name(), s))
+                        service = removeService(s, service)
+                    if service is None:
+                        cls = _MKServiceRegister.get(s)
+                        if cls is None:
+                            PathLog.error("service %s not supported" % s)
+                        else:
+                            PathLog.info("Connecting to service: %s.%s" % (self.name(), s))
+                            service = cls(self.Context, s, ep.properties)
+                            self.service[s] = service
+                            service.attach(self)
+                            self.Poller.register(service.socket, zmq.POLLIN)
+                            poll = True
+                    else:
+                        poll = True
+
+            # if there is at least one service connected check if there are any messages to process
+            while poll:
+                # As it turns out the poller only ever returns a single pair so we want to call it
+                # in a loop to get all pending updates. However, they might fix the behaviour according
+                # to the docs and I don't want that to break this client. So we do both, call it in a
+                # loop and pretend it could return a list of tuples.
+                poll = dict(self.Poller.poll(0))
+                for socket in poll:
+                    for name, service in self.service.items():
+                        if service.socket == socket:
                             msg = None
                             rsp = None
                             rx = MESSAGE.Container()
@@ -173,122 +222,46 @@ class _Thread(PySide.QtCore.QThread):
                                 if rx.type != TYPES.MT_PING:
                                     #PathLog.debug(rx)
                                     service.process(rx);
-                        else:
-                            #print('-', name)
-                            pass
-            with self.mk.lock:
-                for name, service in self.mk.service.items():
+                            break
+
+            for name, service in self.service.items():
+                if service:
                     service.ping()
-
-        PathLog.info('thread stop')
-
-
-class Machinekit(object):
-    '''Main interface to the services of a MK instance.
-Tracks the dynamic registration and unregistration of services and prints the error messages to the log stream.'''
-
-    def __init__(self, uuid, properties):
-        super(self.__class__, self).__init__()
-
-        self.uuid = uuid
-        self.properties = properties
-        self.endpoint = {}
-        self.lock = threading.Lock()
-        self.service = {}
-        self.context = zmq.Context()
-        self.poller = zmq.Poller()
-        self.quit = False
-        self.thread = None
-        self.manualToolChangeNotifier = _ManualToolChangeNotifier(self)
-        self.job = None
-        self.error = None
-
-    def __str__(self):
-        with self.lock:
-            return "MK(%s): %s" % (self.uuid.decode(), sorted([ep.service.decode() for epn, ep in self.endpoint.items()]))
-
-    def __getitem__(self, index):
-        path = index.split('.')
-        s = self.service.get(path[0])
-        if s:
-            if len(path) > 1:
-                return s[path[1:]]
-            return s
-        return None
-
-    def _addService(self, properties, name, address, port):
-        s = properties[b'service']
-        PathLog.track(s, name)
-        with self.lock:
-            endpoint = _Endpoint(s, name, address, port, properties)
-            self.endpoint[s.decode()] = endpoint
-            self.quit = False
-            if self.thread is None:
-                self.thread = _Thread(self)
-                self.thread.start()
-        if s in [b'error', b'status']:
-            s = self.connectWith(s.decode())
-        return (s, endpoint)
-
-    def _removeService(self, name):
-        PathLog.track(name)
-        with self.lock:
-            if name == 'error' and self.error:
-                self.error.separate()
-                self.error = None
-
-            for epn, ep in self.endpoint.items():
-                if ep.name == name:
-                    if epn in [b'halrcmd', 'halrcomp']:
-                        self.manualToolChangeNotifier.disconnect()
-                    del self.endpoint[epn]
-                    break
-            if 0 == len(self.endpoint):
-                self.quit = True
-        if self.quit and self.thread:
-            self.thread.wait()
-            self.thread = None
 
     def changed(self, service, msg):
         PathLog.track(service)
-        display = PathLog.info
-        if msg.isError():
-            display = PathLog.error
-        if msg.isText():
-            display = PathLog.notice
-        for m in msg.messages():
-            display(m)
+        if 'status.' in service.topicName():
+            self.statusUpdate.emit(self, msg)
+        elif 'hal' in service.topicName():
+            self.halUpdate.emit(self, msg)
+        elif 'error' in service.topicName():
+            self.errorUpdate.emit(self, msg)
+            display = PathLog.info
+            if msg.isError():
+                display = PathLog.error
+            if msg.isText():
+                display = PathLog.notice
+            for m in msg.messages():
+                display(m)
+        elif 'command' in service.topicName():
+            self.commandUpdate.emit(self, msg)
 
     def providesServices(self, services):
-        candidates = [s for s in [self.endpoint.get(v) for v in services]]
-        return all([self.endpoint.get(s) for s in services])
-
-    def connectWith(self, s):
-        with self.lock:
-            if not self.service.get(s):
-                cls = _MKServiceRegister.get(s)
-                if cls is None:
-                    PathLog.error("service %s not supported" % s)
-                else:
-                    mk = self.endpoint.get(s)
-                    if mk is None:
-                        PathLog.error("no endpoint for %s" % s)
-                    else:
-                        service = cls(self.context, s, mk.properties)
-                        self.service[s] = service
-                        self.poller.register(service.socket, zmq.POLLIN)
-                        return service
-                return None
-            return self.service[s]
-
-    def connectServices(self, services):
-        return [self.connectWith(s) for s in services]
+        if services is None:
+            services = self.service
+        return all([not self.service[s] is None for s in services])
 
     def isValid(self):
-        return not (self['status'] is None or not self['status'].isValid() or self.endpoint.get('halrcmd') is None)
+        if self['status'] is None:
+            return False
+        if not self['status'].isValid():
+            return False
+        if self['command'] is None:
+            return False
+        return True
 
     def isPowered(self):
-        return (not self['status.io.estop']) and self['status.motion.enabled']
+        return self.isValid() and (not self['status.io.estop']) and self['status.motion.enabled']
 
     def isHomed(self):
         return self.isPowered() and all([axis.homed != 0 for axis in self['status.motion.axis']])
@@ -308,58 +281,13 @@ Tracks the dynamic registration and unregistration of services and prints the er
             command.sendCommands(sequence)
 
     def name(self):
-        return self['status.config.name']
+        if self.nam is None:
+            self.nam = self['status.config.name']
+            if self.nam is None:
+                return self.instance.uuid
+        return self.nam
 
-class _ServiceMonitor(object):
-    '''Singleton for the zeroconf service discovery. DO NOT USE.'''
-    _Instance = None
-
-    def __init__(self):
-        self.zc = zeroconf.Zeroconf()
-        self.quit = False
-        self.browser = zeroconf.ServiceBrowser(self.zc, "_machinekit._tcp.local.", self)
-        self.machinekit = {}
-
-    # zeroconf.ServiceBrowser interface
-    def remove_service(self, zc, typ, name):
-        for mkn, mk in self.machinekit.items():
-            mk._removeService(name)
-
-    def add_service(self, zc, typ, name):
-        info = zc.get_service_info(typ, name)
-        if info and info.properties.get(b'service'):
-            uuid = info.properties[b'uuid']
-            mk = self.machinekit.get(uuid)
-            if not mk:
-                mk = Machinekit(uuid, info.properties)
-                self.machinekit[uuid] = mk
-            service, endpoint = mk._addService(info.properties, info.name, info.address, info.port)
-            #PathLog.info("machinetalk.%-13s %s:%d" % (service.decode(), endpoint.address(), endpoint.port()))
-        else:
-            name = ' '.join(itertools.takewhile(lambda s: s != 'service', info.name.split()))
-            PathLog.info("machinetalk.%-13s - no info" % (name))
-
-    def run(self):
-        while not self.quit:
-            time.sleep(0.1)
-        self.browser.done = True
-
-    def printAll(self):
-        for mkn, mk in self.machinekit.items():
-            print(mk)
-
-    def instances(self, services):
-        return [mk for mkn, mk in self.machinekit.items() if services is None or mk.providesServices(services)]
-
-    @classmethod
-    def Start(cls):
-        if cls._Instance is None:
-            cls._Instance = _ServiceMonitor()
-
-    @classmethod
-    def Instance(cls):
-        cls.Start()
-        return cls._Instance
+_Services = MachinekitInstance.ServiceMonitor()
 
 def _taskMode(service, mode, force):
     '''internal - do not use'''
@@ -396,12 +324,12 @@ def IconResource(filename):
 
 def Start():
     '''Start() ... internal function used to start the service discovery.'''
-    _ServiceMonitor.Start()
+    pass
 
 def Instances(services=None):
     '''Instances(services=None) ... Answer a list of all discovered Machinekit instances which provide all services listed.
     If no services are requested all discovered MK instances are returned.'''
-    return _ServiceMonitor.Instance().instances(services)
+    return _Services.instances(services)
 
 _active = None
 
@@ -445,7 +373,7 @@ If there is only instance it is automatically used as the active one.'''
 
 def Any():
     '''Any() ... returns a Machinekit instance, if at least one was discovered.'''
-    mks = [inst for inst in _ServiceMonitor.Instance().instances(None) if inst.isValid()]
+    mks = [inst for inst in _Services.instances(None) if inst.isValid()]
     if mks:
         return mks[0]
     return None
@@ -498,6 +426,8 @@ def MDI(cmd):
     if mk:
         mk.mdi(cmd)
 
+def New():
+    return Machinekit(_Services.instances(None)[0])
 
 # these are for debugging and development - do not use
 hud     = None

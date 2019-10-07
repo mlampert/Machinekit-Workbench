@@ -255,11 +255,11 @@ _commandCenter = MachinekitCommandCenter()
 def Activated():
     PathLog.track()
     machinekit.Start()
-    _commandCenter.start()
+    #_commandCenter.start()
 
 def Deactivated():
     PathLog.track()
-    _commandCenter.stop()
+    #_commandCenter.stop()
 
 
 def SetupToolbar(workbench):
