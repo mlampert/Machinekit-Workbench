@@ -1,5 +1,6 @@
 import FreeCAD
 import FreeCADGui
+import MKUtils
 import MachinekitInstance
 import PathScripts.PathLog as PathLog
 import PySide.QtCore
@@ -19,7 +20,7 @@ from MKServiceError     import *
 from MKServiceStatus    import *
 from MKServiceHal       import *
 
-PathLog.setLevel(PathLog.Level.NOTICE, PathLog.thisModule())
+PathLog.setLevel(PathLog.Level.DEBUG, PathLog.thisModule())
 PathLog.trackModule(PathLog.thisModule())
 
 AxesForward  = ['X', 'Y', 'Z', 'A', 'B', 'C', 'U', 'V', 'W']
@@ -193,6 +194,7 @@ class Machinekit(PySide.QtCore.QObject):
                             service = cls(self.Context, s, ep.properties)
                             self.service[s] = service
                             service.attach(self)
+                            PathLog.info("               socket: %s" % (service.socket))
                             self.Poller.register(service.socket, zmq.POLLIN)
                             poll = True
                     else:
@@ -206,8 +208,9 @@ class Machinekit(PySide.QtCore.QObject):
                 # loop and pretend it could return a list of tuples.
                 poll = dict(self.Poller.poll(0))
                 for socket in poll:
-                    for name, service in self.service.items():
-                        if service.socket == socket:
+                    processed = False
+                    for service in self.service.values():
+                        if service and service.socket == socket:
                             msg = None
                             rsp = None
                             rx = MESSAGE.Container()
@@ -222,20 +225,23 @@ class Machinekit(PySide.QtCore.QObject):
                                 if rx.type != TYPES.MT_PING:
                                     #PathLog.debug(rx)
                                     service.process(rx);
+                            processed = True
                             break
+                    if not processed:
+                        PathLog.debug("unconnected socket? %s" % socket)
 
-            for name, service in self.service.items():
+            for service in self.service.values():
                 if service:
                     service.ping()
 
     def changed(self, service, msg):
-        PathLog.track(service)
+        #PathLog.track(service)
         if 'status.' in service.topicName():
-            self.statusUpdate.emit(self, msg)
+            self.statusUpdate.emit(service, msg)
         elif 'hal' in service.topicName():
-            self.halUpdate.emit(self, msg)
+            self.halUpdate.emit(service, msg)
         elif 'error' in service.topicName():
-            self.errorUpdate.emit(self, msg)
+            self.errorUpdate.emit(service, msg)
             display = PathLog.info
             if msg.isError():
                 display = PathLog.error
@@ -244,7 +250,7 @@ class Machinekit(PySide.QtCore.QObject):
             for m in msg.messages():
                 display(m)
         elif 'command' in service.topicName():
-            self.commandUpdate.emit(self, msg)
+            self.commandUpdate.emit(service, msg)
 
     def providesServices(self, services):
         if services is None:
@@ -272,43 +278,74 @@ class Machinekit(PySide.QtCore.QObject):
     def getJob(self):
         return self.job
 
-    def mdi(self, cmd):
-        command = self.connectWith('command')
-        status = self.connectWith('status')
-        if status and command:
-            sequence = taskModeMDI(self)
-            sequence.append(MKCommandTaskExecute(cmd))
-            command.sendCommands(sequence)
-
     def name(self):
         if self.nam is None:
             self.nam = self['status.config.name']
             if self.nam is None:
-                return self.instance.uuid
+                return self.instance.uuid.decode()
         return self.nam
 
-_Services = MachinekitInstance.ServiceMonitor()
+    def mdi(self, cmd):
+        command = self['command']
+        if command:
+            sequence = MKUtils.taskModeMDI(self)
+            sequence.append(MKCommandTaskExecute(cmd))
+            command.sendCommands(sequence)
 
-def _taskMode(service, mode, force):
-    '''internal - do not use'''
-    m = service['task.task.mode']
-    if m is None:
-        m = service['status.task.task.mode'] 
-    if m != mode or force:
-        return [MKCommandTaskSetMode(mode)]
-    return []
+    def power(self, on=None):
+        '''power() ... unlocks estop and toggles power'''
+        commands = []
+        if self['status.io.estop']:
+            commands.append(MKCommandEstop(False))
+        commands.append(MKCommandPower(not self.isPowered()))
 
-def taskModeAuto(service, force=False):
-    '''taskModeAuto(service, force=False) ... return a list of commands required to switch to AUTO mode.'''
-    return _taskMode(service, STATUS.EmcTaskModeType.Value('EMC_TASK_MODE_AUTO'), force)
+        command = self['command']
+        if command:
+            command.sendCommands(commands)
 
-def taskModeMDI(service, force=False):
-    '''taskModeMDI(service, force=False) ... return a list of commands required to switch to MDI mode.'''
-    return _taskMode(service, STATUS.EmcTaskModeType.Value('EMC_TASK_MODE_MDI'), force)
+    def home(self):
+        '''home() ... homes all axes'''
+        status = self['status']
+        command = self['command']
 
-def taskModeManual(service, force=False):
-    '''taskModeManual(service, force=False) ... return a list of commands required to switch to MANUAL mode.'''
-    return _taskMode(service, STATUS.EmcTaskModeType.Value('EMC_TASK_MODE_MANUAL'), force)
+        if status and command:
+            sequence = [[cmd] for cmd in MKUtils.taskModeManual(status)]
+            toHome = [axis.index for axis in status['motion.axis'] if not axis.homed]
+            order  = {}
+
+            for axis in status['config.axis']:
+                if axis.index in toHome:
+                    batch = order.get(axis.home_sequence)
+                    if batch is None:
+                        batch = []
+                    batch.append(axis.index)
+                    order[axis.home_sequence] = batch
+
+            for key in sorted(order):
+                batch = order[key]
+                sequence.append([MKCommandAxisHome(index, True) for index in batch])
+                for index in batch:
+                    sequence.append([MKCommandWaitUntil(lambda index=index: status["motion.axis.%d.homed" % index])])
+
+            command.sendCommandSequence(sequence)
+
+_MachinekitInstanceMonitor = MachinekitInstance.ServiceMonitor()
+_Machinekit = {}
+
+def _update():
+    for inst in _MachinekitInstanceMonitor.instances(None):
+        if _Machinekit.get(inst.uuid) is None:
+            _Machinekit[inst.uuid] = Machinekit(inst)
+    for mk in _Machinekit.values():
+        mk._update()
+
+    #for mk in [inst for inst in Instances() if inst.isValid()]:
+    #    mtc = mk.manualToolChangeNotifier
+    #    if not mtc.isConnected():
+    #        mtc.connect()
+    #    if not mk.error and mk['error']:
+    #        mk.error = ServiceConnector(mk.connectWith('error'), mk)
+
 
 def PathSource():
     '''PathSource() ... return the path to the workbench'''
@@ -322,112 +359,16 @@ def IconResource(filename):
     '''IconResource(filename) ... return a QtGui.QIcon from the given resource file (which must exist in the Resource directory).'''
     return PySide.QtGui.QIcon(FileResource(filename))
 
-def Start():
-    '''Start() ... internal function used to start the service discovery.'''
-    pass
-
 def Instances(services=None):
     '''Instances(services=None) ... Answer a list of all discovered Machinekit instances which provide all services listed.
     If no services are requested all discovered MK instances are returned.'''
-    return _Services.instances(services)
-
-_active = None
-
-def Activate(mk):
-    '''Activate(mk) ... makes the given machinekit instance the currently active one.
-All communication and commands are for the activated MK instance. If there is only one
-MK instance it is automatically used as the active MK instance.'''
-    global _active
-    PathLog.track(mk)
-    _active = mk
-    if hud:
-        hud.updateUI()
-    if jog:
-        jog.updateUI()
-    if execute:
-        execute.updateUI()
-
-
-def update():
-    for mk in [inst for inst in Instances() if inst.isValid()]:
-        mtc = mk.manualToolChangeNotifier
-        if not mtc.isConnected():
-            mtc.connect()
-        if not mk.error and mk['error']:
-            mk.error = ServiceConnector(mk.connectWith('error'), mk)
-
-def Active():
-    '''Active() ... return the currently active MK instance.
-If there is only instance it is automatically used as the active one.'''
-    global _active
-    if _active and not _active.isValid():
-        _active = None
-        if hud:
-            hud.updateUI()
-        if jog:
-            jog.updateUI()
-        if execute:
-            execute.updateUI()
-
-    return _active
+    return [mk for mk in _Machinekit.values() if mk.providesServices(services)]
 
 def Any():
     '''Any() ... returns a Machinekit instance, if at least one was discovered.'''
-    mks = [inst for inst in _Services.instances(None) if inst.isValid()]
-    if mks:
-        return mks[0]
+    for mk in _Machinekit.values():
+        return mk
     return None
-
-def Power(mk):
-    '''Power() ... unlocks estop and toggles power of the given MK'''
-    if not mk:
-        mk = Active()
-    if mk:
-        status = mk.connectWith('status')
-        command = mk.connectWith('command')
-
-        commands = []
-        if status['io.estop']:
-            commands.append(MKCommandEstop(False))
-        commands.append(MKCommandPower(not mk.isPowered()))
-        command.sendCommands(commands)
-
-def Home(mk):
-    '''Home(mk) ... homes all axis of the given MK'''
-    if not mk:
-        mk = Active()
-    if mk:
-        status = mk.connectWith('status')
-        command = mk.connectWith('command')
-
-        sequence = [[cmd] for cmd in taskModeManual(status)]
-        toHome = [axis.index for axis in status['motion.axis'] if not axis.homed]
-        order  = {}
-
-        for axis in status['config.axis']:
-            if axis.index in toHome:
-                batch = order.get(axis.home_sequence)
-                if batch is None:
-                    batch = []
-                batch.append(axis.index)
-                order[axis.home_sequence] = batch
-
-        for key in sorted(order):
-            batch = order[key]
-            sequence.append([MKCommandAxisHome(index, True) for index in batch])
-            for index in batch:
-                sequence.append([MKCommandWaitUntil(lambda index=index: status["motion.axis.%d.homed" % index])])
-
-        command.sendCommandSequence(sequence)
-
-def MDI(cmd):
-    '''MID(cmd, mk=None) ... executes cmd on the active MK'''
-    mk = Active()
-    if mk:
-        mk.mdi(cmd)
-
-def New():
-    return Machinekit(_Services.instances(None)[0])
 
 # these are for debugging and development - do not use
 hud     = None

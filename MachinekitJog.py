@@ -1,5 +1,6 @@
 import FreeCAD
 import FreeCADGui
+import MKUtils
 import PathScripts.PathGeom as PathGeom
 import PathScripts.PathLog as PathLog
 import PySide.QtCore
@@ -128,7 +129,7 @@ class Jog(object):
 
     def setPosition(self, label, widget):
         PathLog.track()
-        commands = machinekit.taskModeMDI(self)
+        commands = MKUtils.taskModeMDI(self)
 
         cmds = ['G10', 'L20', 'P0']
         for l in label:
@@ -174,7 +175,7 @@ class Jog(object):
                 index, velocity = self.getJogIndexAndVelocity(axis)
                 jog.append(MKCommandAxisJog(index,  velocity,  distance))
         if jog:
-            sequence = [[cmd] for cmd in machinekit.taskModeManual(self)]
+            sequence = [[cmd] for cmd in MKUtils.taskModeManual(self)]
             sequence.append(jog)
             self.cmd.sendCommandSequence(sequence)
 
@@ -188,7 +189,7 @@ class Jog(object):
                 distance = FreeCAD.Units.Quantity(self.ui.jogDistance.currentItem().text()).getValueAs(units)
                 jog.append(MKCommandAxisJog(index, velocity, distance))
             if jog:
-                sequence = [[cmd] for cmd in machinekit.taskModeManual(self)]
+                sequence = [[cmd] for cmd in MKUtils.taskModeManual(self)]
                 sequence.append(jog)
                 self.cmd.sendCommandSequence(sequence)
 
@@ -200,7 +201,7 @@ class Jog(object):
                 index, velocity = self.getJogIndexAndVelocity(axis)
                 jog.append(MKCommandAxisJog(index,  velocity))
             if jog:
-                sequence = [[cmd] for cmd in machinekit.taskModeManual(self)]
+                sequence = [[cmd] for cmd in MKUtils.taskModeManual(self)]
                 sequence.append(jog)
                 self.cmd.sendCommandSequence(sequence)
 
@@ -213,13 +214,13 @@ class Jog(object):
                 index, velocity = self.getJogIndexAndVelocity(axis)
                 jog.append(MKCommandAxisAbort(index))
             if jog:
-                sequence = [[cmd] for cmd in machinekit.taskModeManual(self)]
+                sequence = [[cmd] for cmd in MKUtils.taskModeManual(self)]
                 sequence.append(jog)
                 self.cmd.sendCommandSequence(sequence)
 
     def jogAxesStop(self):
         PathLog.track()
-        sequence = [[cmd] for cmd in machinekit.taskModeManual(self)]
+        sequence = [[cmd] for cmd in MKUtils.taskModeManual(self)]
         sequence.append([MKCommandAxisAbort(i) for i in range(3)])
         self.cmd.abortCommandSequence()
         self.cmd.sendCommandSequence(sequence)
@@ -259,7 +260,7 @@ class Jog(object):
                 # by default we just jog X & Y
                 jog = self._jogXYCmdsFromTo(FreeCAD.Vector(mkx, mky, 0), FreeCAD.Vector(x, y, 0))
 
-            sequence = [[cmd] for cmd in machinekit.taskModeManual(self)]
+            sequence = [[cmd] for cmd in MKUtils.taskModeManual(self)]
             sequence.append(jog)
             self.cmd.sendCommandSequence(sequence)
 
@@ -339,7 +340,7 @@ class Jog(object):
                 for i, j in zip(pts, pts[1:]):
                     jog.append(self._jogXYCmdsFromTo(i, j))
 
-                sequence = [[cmd] for cmd in machinekit.taskModeManual(self)]
+                sequence = [[cmd] for cmd in MKUtils.taskModeManual(self)]
                 sequence.extend(jog)
                 self.cmd.sendCommandSequence(sequence)
             else:

@@ -1,5 +1,6 @@
 import FreeCAD
 import FreeCADGui
+import MKUtils
 import PathScripts.PathLog as PathLog
 import PathScripts.PathPost as PathPost
 import PathScripts.PathUtil as PathUtil
@@ -217,7 +218,7 @@ class Execute(object):
                     ftp.login()
                     ftp.storbinary("STOR %s" % self.RemoteFilename, buf)
                     ftp.quit()
-                    sequence = machinekit.taskModeAuto(self)
+                    sequence = MKUtils.taskModeAuto(self)
                     sequence.append(MKCommandTaskReset(False))
                     sequence.append(MKCommandOpenFile(self.remoteFilePath(), False))
                     self.cmd.sendCommands(sequence)
@@ -228,15 +229,15 @@ class Execute(object):
                 print('Post processing failed')
 
     def executeRun(self):
-        sequence = machinekit.taskModeMDI(self)
+        sequence = MKUtils.taskModeMDI(self)
         sequence.append(MKCommandTaskExecute('M6 T0'))
         sequence.append(MKCommandWaitUntil(lambda : self['status.io.tool.nr'] <= 0))
-        sequence.extend(machinekit.taskModeAuto(self, True))
+        sequence.extend(MKUtils.taskModeAuto(self, True))
         sequence.append(MKCommandTaskRun(False))
         self.cmd.sendCommands(sequence)
 
     def executeStep(self):
-        sequence = machinekit.taskModeAuto(self)
+        sequence = MKUtils.taskModeAuto(self)
         sequence.append(MKCommandTaskStep())
         self.cmd.sendCommands(sequence)
 

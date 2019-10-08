@@ -11,7 +11,7 @@ from PySide import QtCore, QtGui
 PathLog.setLevel(PathLog.Level.INFO, PathLog.thisModule())
 PathLog.trackModule(PathLog.thisModule())
 
-Dock = None
+MK = None
 
 class MachinekitCommand(object):
     def __init__(self, name, services):
@@ -21,16 +21,14 @@ class MachinekitCommand(object):
 
     def IsActive(self):
         #PathLog.track(self.name)
-        return not machinekit.Active() is None
+        return not MK is None
 
     def Activated(self):
-        global Dock
         PathLog.track(self.name)
         dock = None
 
-        mk = machinekit.Active()
-        if mk:
-            dock = self.activate(mk)
+        if MK:
+            dock = self.activate(MK)
         else:
             PathLog.debug('No machinekit instance active')
 
@@ -38,7 +36,6 @@ class MachinekitCommand(object):
             PathLog.debug('No dock to activate')
         else:
             PathLog.debug('Activate first found instance')
-            Dock = dock
             for closebutton in [widget for widget in dock.ui.children() if widget.objectName().endswith('closebutton')]:
                 closebutton.clicked.connect(lambda : self.terminateDock(dock))
             FreeCADGui.getMainWindow().addDockWidget(QtCore.Qt.LeftDockWidgetArea, dock.ui)
@@ -89,7 +86,7 @@ class MachinekitCommandHud(MachinekitCommand):
 
     def IsActive(self):
         #PathLog.track(self.name)
-        return not (machinekit.Active() is None or FreeCADGui.ActiveDocument is None)
+        return not (MK is None or FreeCADGui.ActiveDocument is None)
 
     def activate(self, mk):
         MachinekitHud.ToggleHud(mk)
@@ -109,13 +106,10 @@ class MachinekitCommandPower(MachinekitCommand):
 
     def IsActive(self):
         #PathLog.track(self.name)
-        mk = machinekit.Active()
-        if mk:
-            return mk.isPowered() != self.on
-        return False
+        return MK and MK.isPowered() != self.on
 
     def activate(self, mk):
-        machinekit.Power(mk)
+        mk.power()
 
     def GetResources(self):
         return {
@@ -129,13 +123,10 @@ class MachinekitCommandHome(MachinekitCommand):
 
     def IsActive(self):
         #PathLog.track(self.name)
-        mk = machinekit.Active()
-        if mk:
-            return mk.isPowered() and not mk.isHomed()
-        return False
+        return MK and MK.isPowered() and not MK.isHomed()
 
     def activate(self, mk):
-        machinekit.Home(mk)
+        mk.home()
 
     def GetResources(self):
         return {
@@ -150,7 +141,8 @@ class MachinekitCommandActivate(MachinekitCommand):
         super(self.__class__, self).__init__('Activate', None)
 
     def activate(self, mk):
-        machinekit.Activate(mk)
+        global MK
+        MK = mk
 
     def GetResources(self):
         return {
@@ -204,6 +196,7 @@ class MachinekitCommandCenter(object):
         self.timer.stop()
 
     def tick(self):
+        machinekit._update()
         active = [cmd.IsActive() for cmd in self.commands]
         def aString(activation):
             return '.'.join(['1' if a else '0' for a in activation])
@@ -211,7 +204,6 @@ class MachinekitCommandCenter(object):
             PathLog.info("Command activation changed from %s to %s" % (aString(self.active), aString(active)))
             FreeCADGui.updateCommands()
             self.active = active
-        machinekit.update()
         self.refreshActivationMenu()
 
     def refreshActivationMenu(self):
@@ -227,14 +219,14 @@ class MachinekitCommandCenter(object):
                     if name in mkNames:
                         mkNames.remove(name)
                         mk = [mk for mk in mks if mk.name() == name][0]
-                        action.setEnabled(mk != machinekit.Active())
+                        action.setEnabled(mk != MK)
                     else:
                         ma.removeAction(action)
                 for name in mkNames:
                     mk = [mk for mk in mks if mk.name() == name][0]
                     action = QtGui.QAction(name, ma)
-                    action.setEnabled(mk != machinekit.Active())
-                    PathLog.track(mk.name(), [s for s in mk.endpoint])
+                    action.setEnabled(mk != MK)
+                    PathLog.track(mk.name(), [s for s in mk.instance.endpoint])
                     action.triggered.connect(lambda x=False, mk=mk: self.activate(mk))
                     ma.addAction(action)
             else:
@@ -246,16 +238,16 @@ class MachinekitCommandCenter(object):
                     ma.addAction(action)
 
     def activate(self, mk):
+        global MK
         PathLog.track(mk)
-        machinekit.Activate(mk)
+        MK = mk
         self.refreshActivationMenu()
 
 _commandCenter = MachinekitCommandCenter()
 
 def Activated():
     PathLog.track()
-    machinekit.Start()
-    #_commandCenter.start()
+    _commandCenter.start()
 
 def Deactivated():
     PathLog.track()
