@@ -8,7 +8,6 @@ import PySide.QtCore
 import PySide.QtGui
 import ftplib
 import io
-import ftplib
 import machinekit
 import machinetalk.protobuf.motcmds_pb2 as MOTCMDS
 import machinetalk.protobuf.status_pb2 as STATUS
@@ -53,13 +52,6 @@ class Execute(object):
         self.ui.dockWidgetContents.setAutoFillBackground(True)
         self.ui.dockWidgetContents.setPalette(palette)
 
-        self.connectors = []
-        self.services = self.mk.connectServices(['command', 'status'])
-        for service in self.services:
-            if 'command' == service.name:
-                self.cmd = service
-            self.connectors.append(machinekit.ServiceConnector(service, self))
-
         self.oi = 'v'
         if True:
             lo = PySide.QtGui.QHBoxLayout()
@@ -101,7 +93,6 @@ class Execute(object):
                 self.title.setMaximumHeight(bs.height())
                 self.ob.setMaximumSize(bs)
                 #tb.setMaximumHeight(bs.height())
-                #print(bs)
 
             self.ui.setTitleBarWidget(tb)
 
@@ -132,34 +123,17 @@ class Execute(object):
         self.updateJob()
         self.updateUI()
         machinekit.execute = self
-
-    def __getitem__(self, index):
-        path = index.split('.')
-        for service in self.services:
-            if service.name == path[0]:
-                if len(path) > 1:
-                    return service[path[1:]]
-                return service
-        return None
+        self.mk.statusUpdate.connect(self.changed)
 
     def terminate(self):
+        self.mk.statusUpdate.disconnect(self.changed)
         self.mk = None
         FreeCADGui.Selection.removeObserver(self.observer)
-        for connector in self.connectors:
-            connector.separate()
-        self.connectors = []
         if machinekit.execute == self:
             machinekit.execute = None
 
     def isConnected(self, topics=None):
-        if topics is None:
-            topics = ['status.config', 'status.io', 'status.motion']
-
-        for topic in topics:
-            service = self[topic]
-            if service is None or not service.isValid():
-                return False
-        return not self.cmd is None
+        return self.mk.isValid()
 
     def objectSelectionChanged(self):
         jobs = [sel.Object for sel in FreeCADGui.Selection.getSelectionEx() if sel.Object.Name.startswith('Job')]
@@ -181,7 +155,7 @@ class Execute(object):
             self.oi = 'v'
 
     def isState(self, state):
-        return STATUS.EmcInterpStateType.Value(state) == self['status.interp.state']
+        return STATUS.EmcInterpStateType.Value(state) == self.mk['status.interp.state']
 
     def isIdle(self):
         return self.isState('EMC_TASK_INTERP_IDLE')
@@ -191,7 +165,7 @@ class Execute(object):
     def remoteFilePath(self, path = None):
         if path is None:
             path = self.RemoteFilename
-        return "%s/%s" % (self['status.config.remote_path'], path)
+        return "%s/%s" % (self.mk['status.config.remote_path'], path)
 
     def executeUpload(self):
         job = self.job
@@ -207,48 +181,49 @@ class Execute(object):
                 postlist.append(obj)
 
             post = PathPost.CommandPathPost()
-            (fail, gcode) = post.exportObjectsWith(postlist, job, False)
+            fail, gcode = post.exportObjectsWith(postlist, job, False)
             if not fail:
+                print("POST: ", fail)
                 preamble = "(FreeCAD.Job: %s)\n(FreeCAD.File: %s)\n" % (job.Name, job.Document.FileName)
                 buf = io.BytesIO((preamble + gcode).encode())
-                endpoint = self.mk.endpoint.get('file')
+                endpoint = self.mk.instance.endpoint.get('file')
                 if endpoint:
                     ftp = ftplib.FTP()
                     ftp.connect(endpoint.address(), endpoint.port())
                     ftp.login()
                     ftp.storbinary("STOR %s" % self.RemoteFilename, buf)
                     ftp.quit()
-                    sequence = MKUtils.taskModeAuto(self)
+                    sequence = MKUtils.taskModeAuto(self.mk)
                     sequence.append(MKCommandTaskReset(False))
                     sequence.append(MKCommandOpenFile(self.remoteFilePath(), False))
-                    self.cmd.sendCommands(sequence)
+                    self.mk['command'].sendCommands(sequence)
                     self.mk.setJob(job)
                 else:
-                    print('No endpoint found')
+                    PathLog.error('No endpoint found')
             else:
-                print('Post processing failed')
+                PathLog.error('Post processing failed')
 
     def executeRun(self):
-        sequence = MKUtils.taskModeMDI(self)
+        sequence = MKUtils.taskModeMDI(self.mk)
         sequence.append(MKCommandTaskExecute('M6 T0'))
-        sequence.append(MKCommandWaitUntil(lambda : self['status.io.tool.nr'] <= 0))
-        sequence.extend(MKUtils.taskModeAuto(self, True))
+        sequence.append(MKCommandWaitUntil(lambda : self.mk['status.io.tool.nr'] <= 0))
+        sequence.extend(MKUtils.taskModeAuto(self.mk, True))
         sequence.append(MKCommandTaskRun(False))
-        self.cmd.sendCommands(sequence)
+        self.mk['command'].sendCommands(sequence)
 
     def executeStep(self):
-        sequence = MKUtils.taskModeAuto(self)
+        sequence = MKUtils.taskModeAuto(self.mk)
         sequence.append(MKCommandTaskStep())
-        self.cmd.sendCommands(sequence)
+        self.mk['command'].sendCommands(sequence)
 
     def executePause(self):
         if self.isPaused():
-            self.cmd.sendCommand(MKCommandTaskResume())
+            self.mk['command'].sendCommand(MKCommandTaskResume())
         else:
-            self.cmd.sendCommand(MKCommandTaskPause())
+            self.mk['command'].sendCommand(MKCommandTaskPause())
 
     def executeStop(self):
-        self.cmd.sendCommand(MKCommandTaskAbort())
+        self.mk['command'].sendCommand(MKCommandTaskAbort())
 
     def executeScaleInt(self):
         percent = self.ui.scaleInt.value()
@@ -259,31 +234,31 @@ class Execute(object):
 
     def executeScaleVal(self):
         scale = self.ui.scaleVal.value()
-        self.cmd.sendCommand(MKCommandTrajSetScale(scale))
+        self.mk['command'].sendCommand(MKCommandTrajSetScale(scale))
 
     def updateExecute(self, connected, powered):
         if connected and powered:
             if self.isIdle():
                 self.ui.load.setEnabled(not self.job is None)
-                self.ui.run.setEnabled(self['status.task.file'] != '')
-                self.ui.step.setEnabled(self['status.task.file'] != '')
+                self.ui.run.setEnabled(self.mk['status.task.file'] != '')
+                self.ui.step.setEnabled(self.mk['status.task.file'] != '')
                 self.ui.pause.setEnabled(False)
                 self.ui.stop.setEnabled(False)
             else:
                 self.ui.load.setEnabled(False)
                 self.ui.run.setEnabled(False)
-                self.ui.step.setEnabled(self['status.motion.type'] == MOTCMDS.MotionType.Value('_EMC_MOTION_TYPE_NONE'))
+                self.ui.step.setEnabled(self.mk['status.motion.type'] == MOTCMDS.MotionType.Value('_EMC_MOTION_TYPE_NONE'))
                 self.ui.pause.setEnabled(True)
                 if self.ui.pause.isChecked() != self.isPaused():
                     self.ui.pause.setChecked(self.isPaused())
                 self.ui.stop.setEnabled(True)
 
-            mode = TYPES.RCS_STATUS.Name(self['status.motion.state']).split('_')[1].lower()
-            state = ' '.join(STATUS.EmcTaskExecStateType.Name(self['status.task.state']).split('_')[3:]).lower()
+            mode = TYPES.RCS_STATUS.Name(self.mk['status.motion.state']).split('_')[1].lower()
+            state = ' '.join(STATUS.EmcTaskExecStateType.Name(self.mk['status.task.state']).split('_')[3:]).lower()
             if mode == 'auto':
-                istate = STATUS.EmcInterpStateType.Name(self['status.interp.state']).split('_')[3].lower()
+                istate = STATUS.EmcInterpStateType.Name(self.mk['status.interp.state']).split('_')[3].lower()
                 mode = "%s.%s" % (mode, istate)
-            self.ui.status.setText("%s:%s (%d/%d)" % (mode, state, self['status.motion.line'], self['status.task.line.total']))
+            self.ui.status.setText("%s:%s (%d/%d)" % (mode, state, self.mk['status.motion.line'], self.mk['status.task.line.total']))
 
     def updateUI(self):
         connected = self.isConnected()
@@ -291,27 +266,27 @@ class Execute(object):
 
         self.updateExecute(connected, powered)
         self.ui.dockWidgetContents.setEnabled(powered)
-        self.ui.override.setEnabled(powered and connected and self['status.motion.feed.override'])
+        self.ui.override.setEnabled(powered and connected and self.mk['status.motion.feed.override'])
 
     def updateOverride(self):
         self.ui.scaleInt.blockSignals(True)
-        self.ui.scaleInt.setMinimum(self['status.config.override.feed.min'] * 100)
-        self.ui.scaleInt.setMaximum(self['status.config.override.feed.max'] * 100)
-        self.ui.scaleInt.setSliderPosition(self['status.motion.feed.rate'] * 100)
+        self.ui.scaleInt.setMinimum(self.mk['status.config.override.feed.min'] * 100)
+        self.ui.scaleInt.setMaximum(self.mk['status.config.override.feed.max'] * 100)
+        self.ui.scaleInt.setSliderPosition(self.mk['status.motion.feed.rate'] * 100)
         self.ui.scaleInt.blockSignals(False)
 
         self.ui.scaleVal.blockSignals(True)
-        self.ui.scaleVal.setValue(self['status.motion.feed.rate'])
+        self.ui.scaleVal.setValue(self.mk['status.motion.feed.rate'])
         self.ui.scaleVal.blockSignals(False)
 
     def updateJob(self):
         title = '-.-'
-        path = self['status.task.file']
+        path = self.mk['status.task.file']
         if path:
             title = path.split('/')[-1]
             if self.remoteFilePath() == path:
                 buf = io.BytesIO()
-                endpoint = self.mk.endpoint.get('file')
+                endpoint = self.mk.instance.endpoint.get('file')
                 if endpoint:
                     ftp = ftplib.FTP()
                     ftp.connect(endpoint.address(), endpoint.port())
@@ -346,4 +321,3 @@ class Execute(object):
                 self.updateOverride()
 
             self.updateUI()
-        #print(service.topicName(), updated)

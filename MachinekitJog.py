@@ -84,6 +84,13 @@ class Jog(object):
         self.mk.statusUpdate.connect(self.changed)
         machinekit.jog = self
 
+    def terminate(self):
+        PathLog.track()
+        self.mk.statusUpdate.disconnect(self.changed)
+        self.mk = None
+        if machinekit.jog == self:
+            machinekit.jog = None
+
     def setupUI(self):
         PathLog.track()
         for inc in [self.JogContinuous] + self.mk['status.config.increments']:
@@ -92,11 +99,6 @@ class Jog(object):
             self.ui.jogDistance.addItem(item)
         self.ui.jogDistance.setCurrentRow(0)
         self.isSetup = True
-
-    def terminate(self):
-        PathLog.track()
-        self.mk.statusUpdate.disconnect(self.changed)
-        self.mk = None
 
     def isConnected(self, topics=None):
         PathLog.track()
