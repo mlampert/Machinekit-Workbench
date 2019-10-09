@@ -37,6 +37,18 @@ _MKServiceRegister = {
         '': None
         }
 
+def PathSource():
+    '''PathSource() ... return the path to the workbench'''
+    return os.path.dirname(__file__)
+
+def FileResource(filename):
+    '''FileResource(filename) ... return the full path of the given resource file.'''
+    return "%s/Resources/%s" % (PathSource(), filename)
+
+def IconResource(filename):
+    '''IconResource(filename) ... return a QtGui.QIcon from the given resource file (which must exist in the Resource directory).'''
+    return PySide.QtGui.QIcon(FileResource(filename))
+
 class ServiceConnector(PySide.QtCore.QObject):
     '''Internal class for propagating change notifications from one thread to the main thread (UI).
     It is important that instances of this class are created in the main thread, otherwise QT's
@@ -346,18 +358,6 @@ def _update():
     #    if not mk.error and mk['error']:
     #        mk.error = ServiceConnector(mk.connectWith('error'), mk)
 
-
-def PathSource():
-    '''PathSource() ... return the path to the workbench'''
-    return os.path.dirname(__file__)
-
-def FileResource(filename):
-    '''FileResource(filename) ... return the full path of the given resource file.'''
-    return "%s/Resources/%s" % (PathSource(), filename)
-
-def IconResource(filename):
-    '''IconResource(filename) ... return a QtGui.QIcon from the given resource file (which must exist in the Resource directory).'''
-    return PySide.QtGui.QIcon(FileResource(filename))
 
 def Instances(services=None):
     '''Instances(services=None) ... Answer a list of all discovered Machinekit instances which provide all services listed.

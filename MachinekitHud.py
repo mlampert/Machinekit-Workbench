@@ -106,35 +106,27 @@ class Hud(object):
     def __init__(self, mk, view):
         self.mk = mk
         self.hud = HUD(view)
-        self.status = self.mk.connectWith('status')
-        self.connector = machinekit.ServiceConnector(self.status, self)
         self.updateUI()
         self.hud.show()
+        self.mk.statusUpdate.connect(self.changed)
 
     def terminate(self):
+        self.mk.statusUpdate.disconnect(self.changed)
         self.mk = None
-        self.connector.separate()
-        self.connector = None
         self.hud.hide()
 
-    def homed(self):
-        for i in range(3):
-            if self.status["motion.axis.%d.homed" % i] == 0:
-                return False
-        return True
-
     def displayPos(self, axis):
-        return self.status["motion.position.actual.%s" % axis] - self.status["motion.offset.g5x.%s" % axis]
+        return self.mk["status.motion.position.actual.%s" % axis] - self.mk["status.motion.offset.g5x.%s" % axis]
 
     def spindleRunning(self):
-        return self.status['motion.spindle.enabled'] and self.status['motion.spindle.speed'] > 0
+        return self.mk['status.motion.spindle.enabled'] and self.mk['status.motion.spindle.speed'] > 0
 
     def updateUI(self):
         x = self.displayPos('x')
         y = self.displayPos('y')
         z = self.displayPos('z')
         hot = self.spindleRunning()
-        self.hud.setPosition(x, y, z, self.homed(), hot)
+        self.hud.setPosition(x, y, z, self.mk.isHomed(), hot)
 
     def changed(self, service, msg):
         if self.mk:
