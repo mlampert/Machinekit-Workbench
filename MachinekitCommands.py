@@ -181,6 +181,7 @@ MenuList     = [MachinekitCommandHome.__name__, 'Separator'] + ToolbarTools
 class MachinekitCommandCenter(object):
     def __init__(self):
         self.timer = QtCore.QTimer()
+        self.timer.setTimerType(QtCore.Qt.PreciseTimer)
         self.timer.timeout.connect(self.tick)
         self.commands = []
 
@@ -200,7 +201,7 @@ class MachinekitCommandCenter(object):
         FreeCADGui.addCommand(name, cmd)
 
     def start(self):
-        self.timer.start(100)
+        self.timer.start(50)
 
     def stop(self):
         self.timer.stop()
