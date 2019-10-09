@@ -200,8 +200,7 @@ class MachinekitCommandCenter(object):
         FreeCADGui.addCommand(name, cmd)
 
     def start(self):
-        # it's probably good enough to update once a second
-        self.timer.start(1000)
+        self.timer.start(100)
 
     def stop(self):
         self.timer.stop()

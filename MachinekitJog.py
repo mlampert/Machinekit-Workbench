@@ -34,13 +34,6 @@ class Jog(object):
         self.ui.dockWidgetContents.setAutoFillBackground(True)
         self.ui.dockWidgetContents.setPalette(palette)
 
-        self.connectors = []
-        self.services = self.mk.connectServices(['command', 'status'])
-        for service in self.services:
-            if 'command' == service.name:
-                self.cmd = service
-            self.connectors.append(machinekit.ServiceConnector(service, self))
-
         def setupJogButton(b, axes, icon, slot=None):
             b.setIcon(machinekit.IconResource(icon))
             b.setText('')
@@ -87,65 +80,47 @@ class Jog(object):
 
         self.isSetup = False
         self.updateUI()
+
+        self.mk.statusUpdate.connect(self.changed)
         machinekit.jog = self
 
     def setupUI(self):
         PathLog.track()
-        for inc in [self.JogContinuous] + self['status.config.increments']:
+        for inc in [self.JogContinuous] + self.mk['status.config.increments']:
             item = PySide.QtGui.QListWidgetItem(inc.strip())
             item.setTextAlignment(PySide.QtCore.Qt.AlignRight)
             self.ui.jogDistance.addItem(item)
         self.ui.jogDistance.setCurrentRow(0)
         self.isSetup = True
 
-    def __getitem__(self, index):
-        PathLog.track()
-        path = index.split('.')
-        for service in self.services:
-            if service.name == path[0]:
-                if len(path) > 1:
-                    return service[path[1:]]
-                return service
-        return None
-
     def terminate(self):
         PathLog.track()
+        self.mk.statusUpdate.disconnect(self.changed)
         self.mk = None
-        FreeCADGui.Selection.removeObserver(self)
-        for connector in self.connectors:
-            connector.separate()
-        self.connectors = []
 
     def isConnected(self, topics=None):
         PathLog.track()
-        if topics is None:
-            topics = ['status.config', 'status.io', 'status.motion']
-
-        for topic in topics:
-            service = self[topic]
-            if service is None or not service.isValid():
-                return False
-        return not self.cmd is None
+        return self.mk.isValid()
 
     def setPosition(self, label, widget):
         PathLog.track()
-        commands = MKUtils.taskModeMDI(self)
+        commands = MKUtils.taskModeMDI(self.mk)
 
         cmds = ['G10', 'L20', 'P0']
         for l in label:
             value = 0 if widget is None else widget.value()
-            offset = self["status.motion.offset.g5x.%s" % l]
+            offset = self.mk["status.motion.offset.g5x.%s" % l]
             PathLog.debug("set pos[%s]=%.2f  (%.2f)" % (l, value, offset))
             cmds.append("%s%g" % (l, value))
         code = ' '.join(cmds)
         PathLog.debug("set pos-%s: '%s'" % (label, code))
         commands.append(MKCommandTaskExecute(code))
 
-        self.cmd.sendCommands(commands)
+        self.mk['command'].sendCommands(commands)
 
     def joggingVelocity(self, axis):
         PathLog.track()
-        return self['status.config.velocity.linear.max']
+        return self.mk['status.config.velocity.linear.max']
 
     def getJogIndexAndVelocity(self, axis):
         PathLog.track()
@@ -159,7 +134,7 @@ class Jog(object):
 
     def displayPos(self, axis):
         PathLog.track()
-        return self["status.motion.position.actual.%s" % axis] - self["status.motion.offset.g5x.%s" % axis]
+        return self.mk["status.motion.position.actual.%s" % axis] - self.mk["status.motion.offset.g5x.%s" % axis]
 
     def jogContinuously(self):
         PathLog.track()
@@ -175,9 +150,9 @@ class Jog(object):
                 index, velocity = self.getJogIndexAndVelocity(axis)
                 jog.append(MKCommandAxisJog(index,  velocity,  distance))
         if jog:
-            sequence = [[cmd] for cmd in MKUtils.taskModeManual(self)]
+            sequence = [[cmd] for cmd in MKUtils.taskModeManual(self.mk)]
             sequence.append(jog)
-            self.cmd.sendCommandSequence(sequence)
+            self.mk['command'].sendCommandSequence(sequence)
 
     def jogAxes(self, axes):
         PathLog.track(axes)
@@ -185,13 +160,13 @@ class Jog(object):
             jog = []
             for axis in axes:
                 index, velocity = self.getJogIndexAndVelocity(axis)
-                units = EmcLinearUnits[self['status.config.units.linear']]
+                units = EmcLinearUnits[self.mk['status.config.units.linear']]
                 distance = FreeCAD.Units.Quantity(self.ui.jogDistance.currentItem().text()).getValueAs(units)
                 jog.append(MKCommandAxisJog(index, velocity, distance))
             if jog:
-                sequence = [[cmd] for cmd in MKUtils.taskModeManual(self)]
+                sequence = [[cmd] for cmd in MKUtils.taskModeManual(self.mk)]
                 sequence.append(jog)
-                self.cmd.sendCommandSequence(sequence)
+                self.mk['command'].sendCommandSequence(sequence)
 
     def jogAxesBegin(self, axes):
         PathLog.track(axes)
@@ -201,9 +176,9 @@ class Jog(object):
                 index, velocity = self.getJogIndexAndVelocity(axis)
                 jog.append(MKCommandAxisJog(index,  velocity))
             if jog:
-                sequence = [[cmd] for cmd in MKUtils.taskModeManual(self)]
+                sequence = [[cmd] for cmd in MKUtils.taskModeManual(self.mk)]
                 sequence.append(jog)
-                self.cmd.sendCommandSequence(sequence)
+                self.mk['command'].sendCommandSequence(sequence)
 
 
     def jogAxesEnd(self, axes):
@@ -214,16 +189,16 @@ class Jog(object):
                 index, velocity = self.getJogIndexAndVelocity(axis)
                 jog.append(MKCommandAxisAbort(index))
             if jog:
-                sequence = [[cmd] for cmd in MKUtils.taskModeManual(self)]
+                sequence = [[cmd] for cmd in MKUtils.taskModeManual(self.mk)]
                 sequence.append(jog)
-                self.cmd.sendCommandSequence(sequence)
+                self.mk['command'].sendCommandSequence(sequence)
 
     def jogAxesStop(self):
         PathLog.track()
-        sequence = [[cmd] for cmd in MKUtils.taskModeManual(self)]
+        sequence = [[cmd] for cmd in MKUtils.taskModeManual(self.mk)]
         sequence.append([MKCommandAxisAbort(i) for i in range(3)])
-        self.cmd.abortCommandSequence()
-        self.cmd.sendCommandSequence(sequence)
+        self.mk['command'].abortCommandSequence()
+        self.mk['command'].sendCommandSequence(sequence)
 
     def _jogXYCmdsFromTo(self, start, end):
         jog = []
@@ -240,7 +215,7 @@ class Jog(object):
     # Selection.Observer
     def addSelection(self, doc, obj, sub, pnt):
         PathLog.track()
-        if self.ui.jogGoto.isChecked() and self['status.motion.state'] == TYPES.RCS_DONE:
+        if self.ui.jogGoto.isChecked() and self.mk['status.motion.state'] == TYPES.RCS_DONE:
             x = pnt[0]
             y = pnt[1]
             z = pnt[2]
@@ -260,9 +235,9 @@ class Jog(object):
                 # by default we just jog X & Y
                 jog = self._jogXYCmdsFromTo(FreeCAD.Vector(mkx, mky, 0), FreeCAD.Vector(x, y, 0))
 
-            sequence = [[cmd] for cmd in MKUtils.taskModeManual(self)]
+            sequence = [[cmd] for cmd in MKUtils.taskModeManual(self.mk)]
             sequence.append(jog)
-            self.cmd.sendCommandSequence(sequence)
+            self.mk['command'].sendCommandSequence(sequence)
 
     def updateDRO(self, connected, powered):
         PathLog.track()
@@ -274,9 +249,9 @@ class Jog(object):
             w.setValue(pos)
 
         if connected and powered:
-            actual = self['status.motion.position.actual']
-            off = self['status.motion.offset.g5x']
-            axis = self['status.motion.axis']
+            actual = self.mk['status.motion.position.actual']
+            off = self.mk['status.motion.offset.g5x']
+            axis = self.mk['status.motion.axis']
             updateAxisWidget(self.ui.posX, actual['x'] - off['x'], axis[0].homed)
             updateAxisWidget(self.ui.posY, actual['y'] - off['y'], axis[1].homed)
             updateAxisWidget(self.ui.posZ, actual['z'] - off['z'], axis[2].homed)
@@ -285,10 +260,10 @@ class Jog(object):
         PathLog.track()
         connected = self.isConnected()
         powered = self.mk.isPowered()
-        isIdle = self['status.interp.state'] == STATUS.EmcInterpStateType.Value('EMC_TASK_INTERP_IDLE')
+        isIdle = self.mk['status.interp.state'] == STATUS.EmcInterpStateType.Value('EMC_TASK_INTERP_IDLE')
 
         if connected:
-            self.ui.setWindowTitle(self['status.config.name'])
+            self.ui.setWindowTitle(self.mk['status.config.name'])
             if not self.isSetup:
                 self.setupUI()
 
@@ -340,9 +315,9 @@ class Jog(object):
                 for i, j in zip(pts, pts[1:]):
                     jog.append(self._jogXYCmdsFromTo(i, j))
 
-                sequence = [[cmd] for cmd in MKUtils.taskModeManual(self)]
+                sequence = [[cmd] for cmd in MKUtils.taskModeManual(self.mk)]
                 sequence.extend(jog)
-                self.cmd.sendCommandSequence(sequence)
+                self.mk['command'].sendCommandSequence(sequence)
             else:
                 PathLog.error("BoundBox of job %s is not valid" % job.Label)
         else:
