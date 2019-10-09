@@ -13,6 +13,17 @@ PathLog.trackModule(PathLog.thisModule())
 
 MK = None
 
+def ActiveMK(setIfNone=False):
+    global MK
+    if MK:
+        return MK
+    mks = [mk for mk in machinekit.Instances() if mk.isValid()]
+    if 1 == len(mks):
+        if setIfNone:
+            MK = mks[0]
+        return mks[0]
+    return None
+
 class MachinekitCommand(object):
     def __init__(self, name, services):
         PathLog.track(services)
@@ -21,14 +32,14 @@ class MachinekitCommand(object):
 
     def IsActive(self):
         #PathLog.track(self.name)
-        return not MK is None
+        return not ActiveMK() is None
 
     def Activated(self):
         PathLog.track(self.name)
         dock = None
 
-        if MK:
-            dock = self.activate(MK)
+        if ActiveMK(True):
+            dock = self.activate(ActiveMK())
         else:
             PathLog.debug('No machinekit instance active')
 
@@ -86,7 +97,7 @@ class MachinekitCommandHud(MachinekitCommand):
 
     def IsActive(self):
         #PathLog.track(self.name)
-        return not (MK is None or FreeCADGui.ActiveDocument is None)
+        return not (ActiveMK() is None or FreeCADGui.ActiveDocument is None)
 
     def activate(self, mk):
         MachinekitHud.ToggleHud(mk)
@@ -106,7 +117,7 @@ class MachinekitCommandPower(MachinekitCommand):
 
     def IsActive(self):
         #PathLog.track(self.name)
-        return MK and MK.isPowered() != self.on
+        return ActiveMK() and ActiveMK().isPowered() != self.on
 
     def activate(self, mk):
         mk.power()
@@ -123,7 +134,7 @@ class MachinekitCommandHome(MachinekitCommand):
 
     def IsActive(self):
         #PathLog.track(self.name)
-        return MK and MK.isPowered() and not MK.isHomed()
+        return ActiveMK() and ActiveMK().isPowered() and not ActiveMK().isHomed()
 
     def activate(self, mk):
         mk.home()
