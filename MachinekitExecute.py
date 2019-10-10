@@ -1,6 +1,7 @@
 import FreeCAD
 import FreeCADGui
 import MKUtils
+import MachinekitManualToolChange
 import PathScripts.PathLog as PathLog
 import PathScripts.PathPost as PathPost
 import PathScripts.PathUtil as PathUtil
@@ -122,6 +123,7 @@ class Execute(object):
         self.updateOverride()
         self.updateJob()
         self.updateUI()
+        self.toolChange = MachinekitManualToolChange.Controller(self.mk)
         machinekit.execute = self
         self.mk.statusUpdate.connect(self.changed)
 

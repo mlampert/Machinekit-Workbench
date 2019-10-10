@@ -1,17 +1,12 @@
-import FreeCAD
-import FreeCADGui
 import MKUtils
 import MachinekitInstance
 import PathScripts.PathLog as PathLog
 import PySide.QtCore
 import PySide.QtGui
-import itertools
 import machinetalk.protobuf.message_pb2 as MESSAGE
-import machinetalk.protobuf.status_pb2 as STATUS
 import machinetalk.protobuf.types_pb2 as TYPES
 import os
 import threading
-import zeroconf
 import zmq
 
 from MKCommand          import *
@@ -72,72 +67,6 @@ class ServiceConnector(PySide.QtCore.QObject):
     def disconnect(self):
         super().disconnect(self)
 
-class _ManualToolChangeNotifier(object):
-    '''Class to prompt user to perform a tool change and confirm its completion.'''
-    def __init__(self, mk):
-        self.mk = mk
-        self.status = None
-        self.command = None
-        self.connectors = []
-
-    def disconnect(self):
-        for connector in self.connectors:
-            connector.disconnect()
-        self.connectors = []
-        self.status = None
-        self.command = None
-
-    def connect(self):
-        if self.status or self.command:
-            self.disconnect()
-        if self.mk.providesServices(['halrcomp', 'halrcmd']):
-            self.status = self.mk.connectWith('halrcomp')
-            self.command = self.mk.connectWith('halrcmd')
-            self.connectors.append(ServiceConnector(self.status, self))
-            self.connectors.append(ServiceConnector(self.command, self))
-
-    def isConnected(self):
-        return self.status and self.command and self.connectors
-
-    def changed(self, service, msg):
-        if msg.changeTool():
-            if 0 == msg.toolNumber():
-                PathLog.debug("TC clear")
-                service.toolChanged(self.command, True)
-            else:
-                tc = self.getTC(msg.toolNumber())
-                if tc:
-                    msg = ["Insert tool #%d" % tc.ToolNumber, "<i>\"%s\"</i>" % tc.Label]
-                else:
-                    msg = ["Insert tool #%d" % msg.toolNumber()]
-                mb = PySide.QtGui.QMessageBox()
-                mb.setWindowIcon(IconResource('machinekiticon.png'))
-                mb.setWindowTitle('Machinekit')
-                mb.setTextFormat(PySide.QtCore.Qt.TextFormat.RichText)
-                mb.setText("<div align='center'>%s</div>" % '<br/>'.join(msg))
-                mb.setIcon(PySide.QtGui.QMessageBox.Warning)
-                mb.setStandardButtons(PySide.QtGui.QMessageBox.Ok | PySide.QtGui.QMessageBox.Abort)
-                if PySide.QtGui.QMessageBox.Ok == mb.exec_():
-                    PathLog.debug("TC confirm")
-                    service.toolChanged(self.command, True)
-                else:
-                    PathLog.debug("TC abort")
-                    self.mk.connectWith('command').sendCommand(MKCommandTaskAbort())
-        elif msg.toolChanged():
-            PathLog.debug('TC reset')
-            service.toolChanged(self.command, False)
-        else:
-            PathLog.debug('TC -')
-            pass
-
-    def getTC(self, nr):
-        job = self.mk.getJob()
-        if job:
-            for tc in job.ToolController:
-                if tc.ToolNumber == nr:
-                    return tc
-        return None
-
 class Machinekit(PySide.QtCore.QObject):
     statusUpdate    = PySide.QtCore.Signal(object, object)
     errorUpdate     = PySide.QtCore.Signal(object, object)
@@ -155,7 +84,6 @@ class Machinekit(PySide.QtCore.QObject):
         self.lock = threading.Lock()
 
         self.service = {}
-        self.manualToolChangeNotifier = _ManualToolChangeNotifier(self)
         self.job = None
 
         for service in _MKServiceRegister:
