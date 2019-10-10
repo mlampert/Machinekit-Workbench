@@ -16,8 +16,8 @@ from MKServiceError     import *
 from MKServiceStatus    import *
 from MKServiceHal       import *
 
-PathLog.setLevel(PathLog.Level.DEBUG, PathLog.thisModule())
-PathLog.trackModule(PathLog.thisModule())
+PathLog.setLevel(PathLog.Level.INFO, PathLog.thisModule())
+#PathLog.trackModule(PathLog.thisModule())
 
 AxesForward  = ['X', 'Y', 'Z', 'A', 'B', 'C', 'U', 'V', 'W']
 AxesBackward = ['x', 'y', 'z', 'a', 'b', 'c', 'u', 'v', 'w']
@@ -128,7 +128,6 @@ class Machinekit(PySide.QtCore.QObject):
                         service = cls(self.Context, s, ep.properties)
                         self.service[s] = service
                         service.attach(self)
-                        PathLog.info("               socket: %s" % (service.socket))
                         self.Poller.register(service.socket, zmq.POLLIN)
                         poll = True
                 else:

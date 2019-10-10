@@ -11,7 +11,7 @@ import machinetalk.protobuf.types_pb2 as TYPES
 
 from MKCommand import *
 
-PathLog.setLevel(PathLog.Level.DEBUG, PathLog.thisModule())
+#PathLog.setLevel(PathLog.Level.DEBUG, PathLog.thisModule())
 #PathLog.trackModule(PathLog.thisModule())
 
 Tolerance = 0.01

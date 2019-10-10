@@ -4,8 +4,8 @@ import PySide.QtCore
 import PySide.QtGui
 import machinekit
 
-PathLog.setLevel(PathLog.Level.DEBUG, PathLog.thisModule())
-PathLog.trackModule(PathLog.thisModule())
+#PathLog.setLevel(PathLog.Level.DEBUG, PathLog.thisModule())
+#PathLog.trackModule(PathLog.thisModule())
 
 class Controller(object):
     '''Class to prompt user to perform a tool change and confirm its completion.'''

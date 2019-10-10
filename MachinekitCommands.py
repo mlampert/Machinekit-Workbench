@@ -8,8 +8,8 @@ import PySide.QtCore
 import PySide.QtGui
 import machinekit
 
-PathLog.setLevel(PathLog.Level.INFO, PathLog.thisModule())
-PathLog.trackModule(PathLog.thisModule())
+#PathLog.setLevel(PathLog.Level.INFO, PathLog.thisModule())
+#PathLog.trackModule(PathLog.thisModule())
 
 def _mkerror(service, msg):
     mb = PySide.QtGui.QMessageBox()

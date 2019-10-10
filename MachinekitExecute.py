@@ -18,7 +18,7 @@ from MKCommand import *
 from MKServiceCommand import *
 
 
-PathLog.setLevel(PathLog.Level.DEBUG, PathLog.thisModule())
+#PathLog.setLevel(PathLog.Level.DEBUG, PathLog.thisModule())
 
 class TreeSelectionObserver(object):
     def __init__(self, notify):
