@@ -4,23 +4,44 @@ import MachinekitExecute
 import MachinekitHud
 import MachinekitJog
 import PathScripts.PathLog as PathLog
+import PySide.QtCore
+import PySide.QtGui
 import machinekit
-
-from PySide import QtCore, QtGui
 
 PathLog.setLevel(PathLog.Level.INFO, PathLog.thisModule())
 PathLog.trackModule(PathLog.thisModule())
 
+def _mkerror(service, msg):
+    mb = PySide.QtGui.QMessageBox()
+    mb.setWindowIcon(machinekit.IconResource('machinekiticon.png'))
+    mb.setWindowTitle('Machinekit')
+    mb.setTextFormat(PySide.QtCore.Qt.TextFormat.RichText)
+    mb.setText("<div align='center'>%s</div>" % '<br/>'.join(msg.messages()))
+    if msg.isError():
+        mb.setIcon(PySide.QtGui.QMessageBox.Critical)
+    elif msg.isText():
+        mb.setIcon(PySide.QtGui.QMessageBox.Information)
+    else:
+        mb.setIcon(PySide.QtGui.QMessageBox.NoIcon)
+    mb.setStandardButtons(PySide.QtGui.QMessageBox.Ok)
+    mb.exec_()
+
 MK = None
 
-def ActiveMK(setIfNone=False):
+def SetMK(mk):
     global MK
+    if MK:
+        MK.errorUpdate.disconnect(_mkerror)
+    MK = mk
+    mk.errorUpdate.connect(_mkerror)
+
+def ActiveMK(setIfNone=False):
     if MK:
         return MK
     mks = [mk for mk in machinekit.Instances() if mk.isValid()]
     if 1 == len(mks):
         if setIfNone:
-            MK = mks[0]
+            SetMK(mks[0])
         return mks[0]
     return None
 
@@ -49,7 +70,7 @@ class MachinekitCommand(object):
             PathLog.debug('Activate first found instance')
             for closebutton in [widget for widget in dock.ui.children() if widget.objectName().endswith('closebutton')]:
                 closebutton.clicked.connect(lambda : self.terminateDock(dock))
-            FreeCADGui.getMainWindow().addDockWidget(QtCore.Qt.LeftDockWidgetArea, dock.ui)
+            FreeCADGui.getMainWindow().addDockWidget(PySide.QtCore.Qt.LeftDockWidgetArea, dock.ui)
 
     def serviceNames(self):
         return self.services
@@ -152,8 +173,7 @@ class MachinekitCommandActivate(MachinekitCommand):
         super(self.__class__, self).__init__('Activate', None)
 
     def activate(self, mk):
-        global MK
-        MK = mk
+        SetMK(mk)
 
     def GetResources(self):
         return {
@@ -180,8 +200,8 @@ MenuList     = [MachinekitCommandHome.__name__, 'Separator'] + ToolbarTools
 
 class MachinekitCommandCenter(object):
     def __init__(self):
-        self.timer = QtCore.QTimer()
-        self.timer.setTimerType(QtCore.Qt.PreciseTimer)
+        self.timer = PySide.QtCore.QTimer()
+        self.timer.setTimerType(PySide.QtCore.Qt.PreciseTimer)
         self.timer.timeout.connect(self.tick)
         self.commands = []
 
@@ -218,10 +238,10 @@ class MachinekitCommandCenter(object):
         self.refreshActivationMenu()
 
     def refreshActivationMenu(self):
-        menu = FreeCADGui.getMainWindow().menuBar().findChild(QtGui.QMenu, MenuName)
+        menu = FreeCADGui.getMainWindow().menuBar().findChild(PySide.QtGui.QMenu, MenuName)
         if menu:
             mks = [mk for mk in machinekit.Instances() if mk.isValid()]
-            ma = menu.findChild(QtGui.QMenu, MachinekitCommandActivate.MenuText)
+            ma = menu.findChild(PySide.QtGui.QMenu, MachinekitCommandActivate.MenuText)
             actions = ma.actions()
             if mks:
                 mkNames = [mk.name() for mk in mks]
@@ -235,7 +255,7 @@ class MachinekitCommandCenter(object):
                         ma.removeAction(action)
                 for name in mkNames:
                     mk = [mk for mk in mks if mk.name() == name][0]
-                    action = QtGui.QAction(name, ma)
+                    action = PySide.QtGui.QAction(name, ma)
                     action.setEnabled(mk != MK)
                     PathLog.track(mk.name(), [s for s in mk.instance.endpoint])
                     action.triggered.connect(lambda x=False, mk=mk: self.activate(mk))
@@ -244,15 +264,13 @@ class MachinekitCommandCenter(object):
                 if 1 != len(actions) or actions[0].objectName() != MachinekitCommandActivateNone.__name__:
                     for action in actions:
                         ma.removeAction(action)
-                    action = QtGui.QAction(MachinekitCommandActivateNone.MenuText, ma)
+                    action = PySide.QtGui.QAction(MachinekitCommandActivateNone.MenuText, ma)
                     action.setEnabled(False)
                     ma.addAction(action)
 
     def activate(self, mk):
-        global MK
         PathLog.track(mk)
-        MK = mk
-        self.refreshActivationMenu()
+        SetMK(mk)
 
 _commandCenter = MachinekitCommandCenter()
 
