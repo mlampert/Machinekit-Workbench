@@ -20,11 +20,6 @@ class MKService(MKObserverable):
     def wantsTermination(self):
         return self.quit
 
-    def receiveMessage(self):
-        # dealer-router just return the message
-        # publish-subscribe also provide the topic
-        return self.socket.recv_multipart()[-1]
-
     def process(self, container):
         pass
 

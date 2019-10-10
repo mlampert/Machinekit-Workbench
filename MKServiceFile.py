@@ -9,9 +9,6 @@ class MKServiceFile(MKService):
         MKService.__init__(self, name, properties)
         self.up = urlparse(self.dsn)
 
-    def receiveMessage(self):
-        raise Exception('what do you want?')
-
     def process(self, container):
         raise Exception("got: %s" % str(container))
 
