@@ -18,7 +18,8 @@ from MKCommand import *
 from MKServiceCommand import *
 
 
-#PathLog.setLevel(PathLog.Level.DEBUG, PathLog.thisModule())
+PathLog.setLevel(PathLog.Level.DEBUG, PathLog.thisModule())
+PathLog.trackModule(PathLog.thisModule())
 
 class TreeSelectionObserver(object):
     def __init__(self, notify):
@@ -186,7 +187,7 @@ class Execute(object):
             fail, gcode = post.exportObjectsWith(postlist, job, False)
             if not fail:
                 print("POST: ", fail)
-                preamble = "(FreeCAD.Job: %s)\n(FreeCAD.File: %s)\n" % (job.Name, job.Document.FileName)
+                preamble = "(FreeCAD.Job: %s)\n(FreeCAD.File: %s)\n(FreeCAD.Signature: %d)\n" % (job.Name, job.Document.FileName, MKUtils.pathSignature(job.Path))
                 buf = io.BytesIO((preamble + gcode).encode())
                 endpoint = self.mk.instance.endpoint.get('file')
                 if endpoint:
@@ -298,20 +299,27 @@ class Execute(object):
                     buf.seek(0)
                     line1 = buf.readline().decode()
                     line2 = buf.readline().decode()
+                    line3 = buf.readline().decode()
                     PathLog.debug("Line 1: '%s'" % line1)
                     PathLog.debug("Line 2: '%s'" % line2)
-                    if line1.startswith('(FreeCAD.Job: ') and line2.startswith('(FreeCAD.File: '):
-                        title    = line1[14:-2]
-                        filename = line2[15:-2]
+                    PathLog.debug("Line 3: '%s'" % line3)
+                    if line1.startswith('(FreeCAD.Job: ') and line2.startswith('(FreeCAD.File: ') and line3.startswith('(FreeCAD.Signature: '):
+                        title     = line1[14:-2]
+                        filename  = line2[15:-2]
+                        signature = line3[20:-2]
                         PathLog.debug("Loaded document: '%s' - '%s'" % (filename, title))
                         for docName, doc in FreeCAD.listDocuments().items():
                             PathLog.debug("Document: '%s' - '%s'" % (docName, doc.FileName))
                             if doc.FileName == filename:
                                 job = doc.getObject(title)
                                 if job:
-                                    self.mk.setJob(job)
-                                    title = "%s.%s" % (job.Document.Label, job.Label)
-                                    PathLog.info("Job already loaded.")
+                                    sign = MKUtils.pathSignature(job.Path)
+                                    if str(sign) == signature:
+                                        self.mk.setJob(job)
+                                        title = "%s.%s" % (job.Document.Label, job.Label)
+                                        PathLog.info("Job %s.%s already loaded." % (docName, title))
+                                    else:
+                                        PathLog.info("Job %s.%s needs updating (%s vs. %s)" % (docName, title, signature, sign))
         self.title.setText(title)
 
     def changed(self, service, updated):

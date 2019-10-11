@@ -22,3 +22,9 @@ def taskModeManual(service, force=False):
     '''taskModeManual(service, force=False) ... return a list of commands required to switch to MANUAL mode.'''
     return _taskMode(service, STATUS.EmcTaskModeType.Value('EMC_TASK_MODE_MANUAL'), force)
 
+def pathSignature(path):
+    signature = 0
+    for cmd in path.Commands:
+        for c in cmd.toGCode():
+            signature += ord(c)
+    return signature
