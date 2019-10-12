@@ -269,6 +269,9 @@ class Machinekit(PySide.QtCore.QObject):
                 for index in batch:
                     sequence.append([MKCommandWaitUntil(lambda index=index: status["motion.axis.%d.homed" % index])])
 
+            sequence.append(MKUtils.taskModeMDI(self, True))
+            sequence.append([MKCommandTaskExecute('G10 L20 P0 X0 Y0 Z0')])
+
             command.sendCommandSequence(sequence)
 
 _MachinekitInstanceMonitor = MachinekitInstance.ServiceMonitor()
