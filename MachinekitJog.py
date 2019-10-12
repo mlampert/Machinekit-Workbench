@@ -123,7 +123,7 @@ class Jog(object):
 
     def joggingVelocity(self, axis):
         PathLog.track()
-        return self.mk['status.config.velocity.linear.max']
+        return self.mk['status.config.velocity.linear.default']
 
     def getJogIndexAndVelocity(self, axis):
         PathLog.track()
