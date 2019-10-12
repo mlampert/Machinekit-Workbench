@@ -391,7 +391,7 @@ class MKTool:
     def merge(self, container):
         updated = []
         for tool in container.tool_table:
-            if tool.index == tool.index:
+            if tool.index == self.index:
                 updated += mergeMember(self, 'id', tool)
                 updated += mergeMember(self, 'diameter', tool)
                 updated += mergeMember(self, 'frontangle', tool)

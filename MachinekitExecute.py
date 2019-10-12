@@ -196,7 +196,11 @@ class Execute(object):
                     ftp.login()
                     ftp.storbinary("STOR %s" % self.RemoteFilename, buf)
                     ftp.quit()
-                    sequence = MKUtils.taskModeAuto(self.mk)
+                    sequence = MKUtils.taskModeMDI(self.mk)
+                    for tc in job.ToolController:
+                        t = tc.Tool
+                        sequence.append(MKCommandTaskExecute("G10L1P%dR%gZ%f" % (tc.ToolNumber, t.Diameter/2., t.LengthOffset)))
+                    sequence.extend(MKUtils.taskModeAuto(self.mk))
                     sequence.append(MKCommandTaskReset(False))
                     sequence.append(MKCommandOpenFile(self.remoteFilePath(), False))
                     self.mk['command'].sendCommands(sequence)
@@ -300,9 +304,9 @@ class Execute(object):
                     line1 = buf.readline().decode()
                     line2 = buf.readline().decode()
                     line3 = buf.readline().decode()
-                    PathLog.debug("Line 1: '%s'" % line1)
-                    PathLog.debug("Line 2: '%s'" % line2)
-                    PathLog.debug("Line 3: '%s'" % line3)
+                    #PathLog.debug("Line 1: '%s'" % line1)
+                    #PathLog.debug("Line 2: '%s'" % line2)
+                    #PathLog.debug("Line 3: '%s'" % line3)
                     if line1.startswith('(FreeCAD.Job: ') and line2.startswith('(FreeCAD.File: ') and line3.startswith('(FreeCAD.Signature: '):
                         title     = line1[14:-2]
                         filename  = line2[15:-2]

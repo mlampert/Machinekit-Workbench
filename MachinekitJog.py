@@ -88,6 +88,7 @@ class Jog(object):
         PathLog.track()
         self.mk.statusUpdate.disconnect(self.changed)
         self.mk = None
+        FreeCADGui.Selection.removeObserver(self)
         if machinekit.jog == self:
             machinekit.jog = None
 
