@@ -44,7 +44,6 @@ class EventFilter(PySide.QtCore.QObject):
         return PySide.QtCore.QObject.eventFilter(self, obj, event)
 
 class Execute(object):
-    RemoteFilename = 'FreeCAD.ngc'
 
     def __init__(self, mk):
         self.mk = mk
@@ -122,11 +121,12 @@ class Execute(object):
         #self.ui.installEventFilter(self.eventFilter)
 
         self.updateOverride()
-        self.updateJob()
+        self.updateJob(self.mk.getJob())
         self.updateUI()
         self.toolChange = MachinekitManualToolChange.Controller(self.mk)
         machinekit.execute = self
         self.mk.statusUpdate.connect(self.changed)
+        self.mk.jobUpdate.connect(self.updateJob)
 
     def terminate(self):
         self.mk.statusUpdate.disconnect(self.changed)
@@ -165,11 +165,6 @@ class Execute(object):
     def isPaused(self):
         return self.isState('EMC_TASK_INTERP_PAUSED')
 
-    def remoteFilePath(self, path = None):
-        if path is None:
-            path = self.RemoteFilename
-        return "%s/%s" % (self.mk['status.config.remote_path'], path)
-
     def executeUpload(self):
         job = self.job
         if job:
@@ -194,17 +189,16 @@ class Execute(object):
                     ftp = ftplib.FTP()
                     ftp.connect(endpoint.address(), endpoint.port())
                     ftp.login()
-                    ftp.storbinary("STOR %s" % self.RemoteFilename, buf)
+                    ftp.storbinary("STOR %s" % self.mk.RemoteFilename, buf)
                     ftp.quit()
                     sequence = MKUtils.taskModeMDI(self.mk)
                     for tc in job.ToolController:
                         t = tc.Tool
-                        sequence.append(MKCommandTaskExecute("G10L1P%dR%gZ%f" % (tc.ToolNumber, t.Diameter/2., t.LengthOffset)))
+                        sequence.append(MKCommandTaskExecute("G10 L1 P%d R%g Z%g" % (tc.ToolNumber, t.Diameter/2., t.LengthOffset)))
                     sequence.extend(MKUtils.taskModeAuto(self.mk))
                     sequence.append(MKCommandTaskReset(False))
-                    sequence.append(MKCommandOpenFile(self.remoteFilePath(), False))
+                    sequence.append(MKCommandOpenFile(self.mk.remoteFilePath(), False))
                     self.mk['command'].sendCommands(sequence)
-                    self.mk.setJob(job)
                 else:
                     PathLog.error('No endpoint found')
             else:
@@ -286,51 +280,15 @@ class Execute(object):
         self.ui.scaleVal.setValue(self.mk['status.motion.feed.rate'])
         self.ui.scaleVal.blockSignals(False)
 
-    def updateJob(self):
+    def updateJob(self, job):
         title = '-.-'
-        path = self.mk['status.task.file']
-        if path:
-            title = path.split('/')[-1]
-            if self.remoteFilePath() == path:
-                buf = io.BytesIO()
-                endpoint = self.mk.instance.endpoint.get('file')
-                if endpoint:
-                    ftp = ftplib.FTP()
-                    ftp.connect(endpoint.address(), endpoint.port())
-                    ftp.login()
-                    ftp.retrbinary("RETR %s" % self.RemoteFilename, buf.write)
-                    ftp.quit()
-                    buf.seek(0)
-                    line1 = buf.readline().decode()
-                    line2 = buf.readline().decode()
-                    line3 = buf.readline().decode()
-                    #PathLog.debug("Line 1: '%s'" % line1)
-                    #PathLog.debug("Line 2: '%s'" % line2)
-                    #PathLog.debug("Line 3: '%s'" % line3)
-                    if line1.startswith('(FreeCAD.Job: ') and line2.startswith('(FreeCAD.File: ') and line3.startswith('(FreeCAD.Signature: '):
-                        title     = line1[14:-2]
-                        filename  = line2[15:-2]
-                        signature = line3[20:-2]
-                        PathLog.debug("Loaded document: '%s' - '%s'" % (filename, title))
-                        for docName, doc in FreeCAD.listDocuments().items():
-                            PathLog.debug("Document: '%s' - '%s'" % (docName, doc.FileName))
-                            if doc.FileName == filename:
-                                job = doc.getObject(title)
-                                if job:
-                                    sign = MKUtils.pathSignature(job.Path)
-                                    if str(sign) == signature:
-                                        self.mk.setJob(job)
-                                        title = "%s.%s" % (job.Document.Label, job.Label)
-                                        PathLog.info("Job %s.%s already loaded." % (docName, title))
-                                    else:
-                                        PathLog.info("Job %s.%s needs updating (%s vs. %s)" % (docName, title, signature, sign))
+        job = self.mk.getJob()
+        if job:
+            title = "%s.%s" % (job.Document.Label, job.Label)
         self.title.setText(title)
 
     def changed(self, service, updated):
         if self.mk:
-            if service.topicName() == 'status.task' and 'file' in updated:
-                self.updateJob()
-
             if service.topicName() == 'status.motion' and 'feed.rate' in updated:
                 self.updateOverride()
 

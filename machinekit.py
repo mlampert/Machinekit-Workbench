@@ -4,6 +4,8 @@ import MachinekitInstance
 import PathScripts.PathLog as PathLog
 import PySide.QtCore
 import PySide.QtGui
+import ftplib
+import io
 import machinetalk.protobuf.message_pb2 as MESSAGE
 import machinetalk.protobuf.types_pb2 as TYPES
 import os
@@ -46,15 +48,17 @@ def IconResource(filename):
     '''IconResource(filename) ... return a QtGui.QIcon from the given resource file (which must exist in the Resource directory).'''
     return PySide.QtGui.QIcon(FileResource(filename))
 
-
 class Machinekit(PySide.QtCore.QObject):
     statusUpdate    = PySide.QtCore.Signal(object, object)
     errorUpdate     = PySide.QtCore.Signal(object, object)
     commandUpdate   = PySide.QtCore.Signal(object, object)
     halUpdate       = PySide.QtCore.Signal(object, object)
+    jobUpdate       = PySide.QtCore.Signal(object)
 
     Context = zmq.Context()
     Poller  = zmq.Poller()
+
+    RemoteFilename = 'FreeCAD.ngc'
 
     def __init__(self, instance):
         super().__init__() # for qt signals
@@ -65,6 +69,7 @@ class Machinekit(PySide.QtCore.QObject):
 
         self.service = {}
         self.job = None
+        self.needUpdateJob = False
 
         for service in _MKServiceRegister:
             if service:
@@ -172,6 +177,8 @@ class Machinekit(PySide.QtCore.QObject):
             if (time.monotonic() - self.lastPing) > 0.5:
                 if updateServices:
                     self._updateServicesLocked()
+                if self.needUpdateJob:
+                    self._updateJob()
                 for service in self.service.values():
                     if service:
                         service.ping()
@@ -180,6 +187,8 @@ class Machinekit(PySide.QtCore.QObject):
     def changed(self, service, msg):
         #PathLog.track(service)
         if 'status.' in service.topicName():
+            if ('status.task' == service.topicName() and 'file' in msg) or ('status.config' == service.topicName() and 'remote_path' in msg):
+                self._updateJob()
             self.statusUpdate.emit(service, msg)
         elif 'hal' in service.topicName():
             self.halUpdate.emit(service, msg)
@@ -216,7 +225,9 @@ class Machinekit(PySide.QtCore.QObject):
         return self.isPowered() and all([axis.homed != 0 for axis in self['status.motion.axis']])
 
     def setJob(self, job):
-        self.job = job
+        if self.job != job:
+            self.job = job
+            self.jobUpdate.emit(job)
 
     def getJob(self):
         return self.job
@@ -282,6 +293,53 @@ class Machinekit(PySide.QtCore.QObject):
         if x is None or y is None or z is None:
             return FreeCAD.BoundBox()
         return FreeCAD.BoundBox(x.min, y.min, z.min, x.max, y.max, z.max)
+
+    def remoteFilePath(self, path = None):
+        if path is None:
+            path = self.RemoteFilename
+        base = self['status.config.remote_path']
+        if base:
+            return "%s/%s" % (base, path)
+        return None
+
+    def _updateJob(self):
+        job = None
+        path  = self['status.task.file']
+        rpath = self.remoteFilePath()
+        endpoint = self.instance.endpoint.get('file')
+        PathLog.info("%s, %s, %s" % (path, rpath, endpoint))
+        if path is None or rpath is None or endpoint is None:
+            self.needUpdateJob = True
+        else:
+            self.needUpdateJob = False
+            if rpath == path:
+                buf = io.BytesIO()
+                ftp = ftplib.FTP()
+                ftp.connect(endpoint.address(), endpoint.port())
+                ftp.login()
+                ftp.retrbinary("RETR %s" % self.RemoteFilename, buf.write)
+                ftp.quit()
+                buf.seek(0)
+                line1 = buf.readline().decode()
+                line2 = buf.readline().decode()
+                line3 = buf.readline().decode()
+                if line1.startswith('(FreeCAD.Job: ') and line2.startswith('(FreeCAD.File: ') and line3.startswith('(FreeCAD.Signature: '):
+                    title     = line1[14:-2]
+                    filename  = line2[15:-2]
+                    signature = line3[20:-2]
+                    PathLog.debug("Loaded document: '%s' - '%s'" % (filename, title))
+                    for docName, doc in FreeCAD.listDocuments().items():
+                        PathLog.debug("Document: '%s' - '%s'" % (docName, doc.FileName))
+                        if doc.FileName == filename:
+                            job = doc.getObject(title)
+                            if job:
+                                sign = MKUtils.pathSignature(job.Path)
+                                if str(sign) == signature:
+                                    PathLog.info("Job %s.%s loaded." % (job.Document.Label, job.Label))
+                                else:
+                                    PathLog.warning("Job %s.%s is out of date!" % (job.Document.Label, job.Label))
+
+        self.setJob(job)
 
 _MachinekitInstanceMonitor = MachinekitInstance.ServiceMonitor()
 _Machinekit = {}
