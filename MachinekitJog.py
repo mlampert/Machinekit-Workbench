@@ -11,7 +11,7 @@ import machinetalk.protobuf.types_pb2 as TYPES
 
 from MKCommand import *
 
-#PathLog.setLevel(PathLog.Level.DEBUG, PathLog.thisModule())
+PathLog.setLevel(PathLog.Level.INFO, PathLog.thisModule())
 #PathLog.trackModule(PathLog.thisModule())
 
 Tolerance = 0.01
@@ -206,12 +206,12 @@ class Jog(object):
     def _jogXYCmdsFromTo(self, start, end):
         jog = []
         if not PathGeom.isRoughly(start.x, end.x, Tolerance):
-            PathLog.debug("jog x from %.2f to %.2f" % (start.x, end.x))
             index, velocity = self.getJogIndexAndVelocity('x')
+            PathLog.info("jog x from %.2f to %.2f (%d, %.2f, %.2f)" % (start.x, end.x, index, velocity, start.x - end.x))
             jog.append(MKCommandAxisJog(index, velocity, start.x - end.x))
         if not PathGeom.isRoughly(start.y, end.y, Tolerance):
-            PathLog.debug("jog y from %.2f to %.2f" % (start.y, end.y))
             index, velocity = self.getJogIndexAndVelocity('y')
+            PathLog.info("jog y from %.2f to %.2f (%d, %.2f, %.2f)" % (start.y, end.y, index, velocity, start.y - end.y))
             jog.append(MKCommandAxisJog(index, velocity, start.y - end.y))
         return jog
 
@@ -289,38 +289,66 @@ class Jog(object):
         if job and hasattr(job, 'Path') and job.Path:
             bb = job.Path.BoundBox
             if bb.isValid():
-                mkx = self.displayPos('x')
-                mky = self.displayPos('y')
-                begin = FreeCAD.Vector(mkx, mky, 0)
-                pts = []
-                if forward:
-                    pts.append(FreeCAD.Vector(bb.XMin, bb.YMin, 0))
-                    pts.append(FreeCAD.Vector(bb.XMax, bb.YMin, 0))
-                    pts.append(FreeCAD.Vector(bb.XMax, bb.YMax, 0))
-                    pts.append(FreeCAD.Vector(bb.XMin, bb.YMax, 0))
+                off = self.mk['status.motion.offset.g5x']
+                bb.move(FreeCAD.Vector(off['x'], off['y'], off['z']))
+                if self.mk.boundBox().isInside(bb):
+                    mkx = self.displayPos('x')
+                    mky = self.displayPos('y')
+                    begin = FreeCAD.Vector(mkx, mky, 0)
+                    pts = []
+                    if forward:
+                        pts.append(FreeCAD.Vector(bb.XMin, bb.YMin, 0))
+                        pts.append(FreeCAD.Vector(bb.XMax, bb.YMin, 0))
+                        pts.append(FreeCAD.Vector(bb.XMax, bb.YMax, 0))
+                        pts.append(FreeCAD.Vector(bb.XMin, bb.YMax, 0))
+                    else:
+                        pts.append(FreeCAD.Vector(bb.XMin, bb.YMin, 0))
+                        pts.append(FreeCAD.Vector(bb.XMin, bb.YMax, 0))
+                        pts.append(FreeCAD.Vector(bb.XMax, bb.YMax, 0))
+                        pts.append(FreeCAD.Vector(bb.XMax, bb.YMin, 0))
+
+                    dist = [begin.distanceToPoint(p) for p in pts]
+                    rot = dist.index(min(dist))
+                    pts = pts[rot:] + pts[:rot]
+                    pts.append(pts[0])
+                    PathLog.info(" begin = (%5.2f, %5.2f)" % (begin.x, begin.y))
+                    for i, p in enumerate(pts):
+                        PathLog.info(" pts[%d] = (%5.2f, %5.2f)" % (i, p.x, p.y))
+
+                    jog = []
+                    if not PathGeom.pointsCoincide(begin, pts[0]):
+                        PathLog.info("Move to start point (%.2f, %.2f)" % (pts[0].x, pts[0].y))
+                        jog.append(self._jogXYCmdsFromTo(begin, pts[0]))
+                    for i, j in zip(pts, pts[1:]):
+                        jog.append(self._jogXYCmdsFromTo(i, j))
+
+                    sequence = [[cmd] for cmd in MKUtils.taskModeManual(self.mk)]
+                    sequence.extend(jog)
+                    self.mk['command'].sendCommandSequence(sequence)
                 else:
-                    pts.append(FreeCAD.Vector(bb.XMin, bb.YMin, 0))
-                    pts.append(FreeCAD.Vector(bb.XMin, bb.YMax, 0))
-                    pts.append(FreeCAD.Vector(bb.XMax, bb.YMax, 0))
-                    pts.append(FreeCAD.Vector(bb.XMax, bb.YMin, 0))
+                    mbb = self.mk.boundBox()
+                    msg = ["Cannot scan job!"]
+                    if mbb.XMin > bb.XMin:
+                        msg.append("X limit min exceeded by: %.2f" % (mbb.XMin - bb.XMin))
+                    if mbb.XMax < bb.XMax:
+                        msg.append("X limit max exceeded by: %.2f" % (bb.XMax - mbb.XMax))
+                    if mbb.YMin > bb.YMin:
+                        msg.append("Y limit min exceeded by: %.2f" % (mbb.YMin - bb.YMin))
+                    if mbb.YMax < bb.YMax:
+                        msg.append("Y limit max exceeded by: %.2f" % (bb.YMax - mbb.YMax))
+                    if mbb.ZMin > bb.ZMin:
+                        msg.append("Z limit min exceeded by: %.2f" % (mbb.ZMin - bb.ZMin))
+                    if mbb.ZMax < bb.ZMax:
+                        msg.append("Z limit max exceeded by: %.2f" % (bb.ZMax - mbb.ZMax))
 
-                dist = [begin.distanceToPoint(p) for p in pts]
-                rot = dist.index(min(dist))
-                pts = pts[rot:] + pts[:rot]
-                pts.append(pts[0])
-                PathLog.info(" begin = (%5.2f, %5.2f)" % (begin.x, begin.y))
-                for i, p in enumerate(pts):
-                    PathLog.info(" pts[%d] = (%5.2f, %5.2f)" % (i, p.x, p.y))
-
-                jog = []
-                if not PathGeom.pointsCoincide(begin, pts[0]):
-                    jog.append(self._jogXYCmdsFromTo(begin, pts[0]))
-                for i, j in zip(pts, pts[1:]):
-                    jog.append(self._jogXYCmdsFromTo(i, j))
-
-                sequence = [[cmd] for cmd in MKUtils.taskModeManual(self.mk)]
-                sequence.extend(jog)
-                self.mk['command'].sendCommandSequence(sequence)
+                    mb = PySide.QtGui.QMessageBox()
+                    mb.setWindowIcon(machinekit.IconResource('machinekiticon.png'))
+                    mb.setWindowTitle('Machinekit')
+                    mb.setTextFormat(PySide.QtCore.Qt.TextFormat.RichText)
+                    mb.setText("<div align='center'>%s</div>" % '<br/>'.join(msg))
+                    mb.setIcon(PySide.QtGui.QMessageBox.Critical)
+                    mb.setStandardButtons(PySide.QtGui.QMessageBox.Ok)
+                    mb.exec_()
             else:
                 PathLog.error("BoundBox of job %s is not valid" % job.Label)
         else:

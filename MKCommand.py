@@ -135,6 +135,10 @@ class MKCommandAxisAbort(MKCommandExecute):
 
 class MKCommandAxisJog(MKCommandExecute):
     def __init__(self, index, velocity, distance = None):
+        self.index = index
+        self.velocity = velocity
+        self.distance = distance
+
         if distance is None:
             MKCommandExecute.__init__(self, TYPES.MT_EMC_AXIS_JOG)
         else:
@@ -143,6 +147,10 @@ class MKCommandAxisJog(MKCommandExecute):
         self.msg.emc_command_params.index = index
         self.msg.emc_command_params.velocity = velocity
 
+    def __str__(self):
+        if self.distance:
+            return "AxisJog(%d, %.2f, %.2f)" % (self.index, self.velocity, self.distance)
+        return "AxisJog(%d, %.2f, -)" % (self.index, self.velocity)
 
 class MKCommandTrajSetScale(MKCommand):
     def __init__(self, scale, rapid=False):

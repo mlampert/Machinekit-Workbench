@@ -1,3 +1,4 @@
+import FreeCAD
 import MKUtils
 import MachinekitInstance
 import PathScripts.PathLog as PathLog
@@ -273,6 +274,14 @@ class Machinekit(PySide.QtCore.QObject):
             sequence.append([MKCommandTaskExecute('G10 L20 P0 X0 Y0 Z0')])
 
             command.sendCommandSequence(sequence)
+
+    def boundBox(self):
+        x = self['status.config.axis.0.limit']
+        y = self['status.config.axis.1.limit']
+        z = self['status.config.axis.2.limit']
+        if x is None or y is None or z is None:
+            return FreeCAD.BoundBox()
+        return FreeCAD.BoundBox(x.min, y.min, z.min, x.max, y.max, z.max)
 
 _MachinekitInstanceMonitor = MachinekitInstance.ServiceMonitor()
 _Machinekit = {}
