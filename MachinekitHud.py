@@ -116,7 +116,11 @@ class Hud(object):
         self.hud.hide()
 
     def displayPos(self, axis):
-        return self.mk["status.motion.position.actual.%s" % axis] - self.mk["status.motion.offset.g5x.%s" % axis]
+        actual = self.mk["status.motion.position.actual.%s" % axis]
+        offset = self.mk["status.motion.offset.g5x.%s" % axis]
+        if actual is None or offset is None:
+            return 0
+        return actual - offset
 
     def spindleRunning(self):
         return self.mk['status.motion.spindle.enabled'] and self.mk['status.motion.spindle.speed'] > 0
