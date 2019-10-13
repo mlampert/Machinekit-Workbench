@@ -3,7 +3,7 @@
 # The classes in this file deal with service discovery and keep track of all discovered Machinekit
 # instances and their associated endpoints.
 
-
+import itertools
 import threading
 import zeroconf
 
