@@ -24,7 +24,6 @@ class HUD(object):
         self.mat.transparency = 0
 
         self.fnt = coin.SoFont()
-        self.fnt.name = 'mono'
 
         self.txt = coin.SoText2()
         self.txt.string = 'setValues'
@@ -67,7 +66,8 @@ class HUD(object):
         self.setPosition(0, 0, 0, 0, 0, 0, False, False)
 
     def updatePreferences(self):
-        self.fsze = MachinekitPreferences.hudFontSize()
+        self.fsze     = MachinekitPreferences.hudFontSize()
+        self.fnt.name = MachinekitPreferences.hudFontName()
         self.fnt.size = self.fsze
 
         size = self.view.getSize()
