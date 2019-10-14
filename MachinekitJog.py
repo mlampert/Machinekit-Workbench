@@ -296,6 +296,7 @@ class Jog(object):
                     mky = self.displayPos('y')
                     begin = FreeCAD.Vector(mkx, mky, 0)
                     pts = []
+                    bb = job.Path.BoundBox
                     if forward:
                         pts.append(FreeCAD.Vector(bb.XMin, bb.YMin, 0))
                         pts.append(FreeCAD.Vector(bb.XMax, bb.YMin, 0))
