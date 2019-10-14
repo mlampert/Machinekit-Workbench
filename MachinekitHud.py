@@ -1,37 +1,29 @@
 import FreeCAD
 import FreeCADGui
+import MachinekitPreferences
 import machinekit
 import math
 
 from MKCommand import *
 from pivy import coin
 
-def axisFmt(axis, val):
-    return "%s: %8.3f" % (axis, val)
-
 class HUD(object):
-    def __init__(self, view, fontSize=33, coneHeight=5):
-        self.view = view
-        self.fsze = fontSize
-        self.tsze = coneHeight
 
-        size = view.getSize()
-        ypos = 1 - (2 / size[1]) * self.fsze
-        xpos = -0.98 # there's probably a smarter way, but it seems to be OK
+    def __init__(self, view, coneHeight=5):
+        self.view = view
+        self.tsze = coneHeight
 
         self.cam = coin.SoOrthographicCamera()
         self.cam.aspectRatio = 1
         self.cam.viewportMapping = coin.SoCamera.LEAVE_ALONE
 
         self.pos = coin.SoTranslation()
-        self.pos.translation = (xpos, ypos, 0)
 
         self.mat = coin.SoMaterial()
         self.mat.diffuseColor = coin.SbColor(0.9, 0.0, 0.9)
         self.mat.transparency = 0
 
         self.fnt = coin.SoFont()
-        self.fnt.size = self.fsze
         self.fnt.name = 'mono'
 
         self.txt = coin.SoText2()
@@ -52,7 +44,6 @@ class HUD(object):
         self.tTrf.rotation.setValue(coin.SbVec3f((1,0,0)), -math.pi/2)
 
         self.tPos = coin.SoTranslation()
-        self.tPos.translation = (xpos, ypos, 0)
 
         self.tMat = coin.SoMaterial()
         self.tMat.diffuseColor = coin.SbColor(0.4, 0.4, 0.4)
@@ -72,16 +63,37 @@ class HUD(object):
         self.render = self.viewer.getSoRenderManager()
         self.sup = None
 
-        self.up = 0
-        self.setPosition(0, 0, 0, False, False)
+        self.updatePreferences()
+        self.setPosition(0, 0, 0, 0, 0, 0, False, False)
 
-    def setPosition(self, x, y, z, homed=True, hot=False):
-        self.up += 1
+    def updatePreferences(self):
+        self.fsze = MachinekitPreferences.hudFontSize()
+        self.fnt.size = self.fsze
+
+        size = self.view.getSize()
+        ypos = 1 - (2. / size[1]) * self.fsze
+        xpos = -0.98 # there's probably a smarter way, but it seems to be OK
+
+        self.pos.translation = (xpos, ypos, 0)
+
+        self.showWorkCoordinates    = MachinekitPreferences.hudShowWorkCoordinates()
+        self.showMachineCoordinates = MachinekitPreferences.hudShowMachineCoordinates()
+
+    def axisFmt(self, axis, val, real):
+        if self.showWorkCoordinates:
+            if self.showMachineCoordinates:
+                return "%s: %8.3f %8.3f" % (axis, val, real)
+            return "%s: %8.3f" % (axis, val)
+        if self.showMachineCoordinates:
+            return "%s: %8.3f" % (axis, real)
+        return ''
+
+    def setPosition(self, x, X, y, Y, z, Z, homed=True, hot=False):
         if homed:
             self.mat.diffuseColor = coin.SbColor(0.0, 0.9, 0.0)
         else:
             self.mat.diffuseColor = coin.SbColor(0.9, 0.0, 0.9)
-        self.txt.string.setValues([axisFmt('X', x), axisFmt('Y', y), axisFmt('Z', z)])
+        self.txt.string.setValues([self.axisFmt('X', x, X), self.axisFmt('Y', y, Y), self.axisFmt('Z', z, Z)])
         self.tPos.translation = (x, y, z)
 
         if hot:
@@ -109,6 +121,7 @@ class Hud(object):
         self.updateUI()
         self.hud.show()
         self.mk.statusUpdate.connect(self.changed)
+        self.mk.preferencesUpdate.connect(self.preferencesChanged)
 
     def terminate(self):
         self.mk.statusUpdate.disconnect(self.changed)
@@ -119,18 +132,22 @@ class Hud(object):
         actual = self.mk["status.motion.position.actual.%s" % axis]
         offset = self.mk["status.motion.offset.g5x.%s" % axis]
         if actual is None or offset is None:
-            return 0
-        return actual - offset
+            return 0, 0
+        return actual - offset, actual
 
     def spindleRunning(self):
         return self.mk['status.motion.spindle.enabled'] and self.mk['status.motion.spindle.speed'] > 0
 
     def updateUI(self):
-        x = self.displayPos('x')
-        y = self.displayPos('y')
-        z = self.displayPos('z')
+        x, X = self.displayPos('x')
+        y, Y = self.displayPos('y')
+        z, Z = self.displayPos('z')
         hot = self.spindleRunning()
-        self.hud.setPosition(x, y, z, self.mk.isHomed(), hot)
+        self.hud.setPosition(x, X, y, Y, z, Z, self.mk.isHomed(), hot)
+
+    def preferencesChanged(self):
+        self.hud.updatePreferences()
+        self.updateUI()
 
     def changed(self, service, msg):
         if self.mk:

@@ -49,11 +49,12 @@ def IconResource(filename):
     return PySide.QtGui.QIcon(FileResource(filename))
 
 class Machinekit(PySide.QtCore.QObject):
-    statusUpdate    = PySide.QtCore.Signal(object, object)
-    errorUpdate     = PySide.QtCore.Signal(object, object)
-    commandUpdate   = PySide.QtCore.Signal(object, object)
-    halUpdate       = PySide.QtCore.Signal(object, object)
-    jobUpdate       = PySide.QtCore.Signal(object)
+    statusUpdate      = PySide.QtCore.Signal(object, object)
+    errorUpdate       = PySide.QtCore.Signal(object, object)
+    commandUpdate     = PySide.QtCore.Signal(object, object)
+    halUpdate         = PySide.QtCore.Signal(object, object)
+    jobUpdate         = PySide.QtCore.Signal(object)
+    preferencesUpdate = PySide.QtCore.Signal()
 
     Context = zmq.Context()
     Poller  = zmq.Poller()
