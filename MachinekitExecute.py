@@ -194,7 +194,9 @@ class Execute(object):
                     sequence = MKUtils.taskModeMDI(self.mk)
                     for tc in job.ToolController:
                         t = tc.Tool
-                        sequence.append(MKCommandTaskExecute("G10 L1 P%d R%g Z%g" % (tc.ToolNumber, t.Diameter/2., t.LengthOffset)))
+                        radius = float(t.Diameter) / 2 if hasattr(t, 'Diameter') else 0.
+                        offset = t.LengthOffset if hasattr(t, 'LengthOffset') else 0.
+                        sequence.append(MKCommandTaskExecute("G10 L1 P%d R%g Z%g" % (tc.ToolNumber, radius, offset)))
                     sequence.extend(MKUtils.taskModeAuto(self.mk))
                     sequence.append(MKCommandTaskReset(False))
                     sequence.append(MKCommandOpenFile(self.mk.remoteFilePath(), False))
