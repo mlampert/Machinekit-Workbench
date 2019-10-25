@@ -21,7 +21,7 @@ class HUD(object):
         self.pos = coin.SoTranslation()
 
         self.mat = coin.SoMaterial()
-        self.mat.diffuseColor = coin.SbColor(0.9, 0.0, 0.9)
+        self.mat.diffuseColor = coin.SbColor(MachinekitPreferences.hudFontColorUnhomed())
         self.mat.transparency = 0
 
         self.fnt = coin.SoFont()
@@ -65,6 +65,8 @@ class HUD(object):
         self.fnt.name = MachinekitPreferences.hudFontName()
         self.fnt.size = self.fsze
 
+        self.mat.diffuseColor = coin.SbColor(MachinekitPreferences.hudFontColorUnhomed())
+
         size = self.view.getSize()
         ypos = 1 - (2. / size[1]) * self.fsze
         xpos = -0.98 # there's probably a smarter way, but it seems to be OK
@@ -83,23 +85,23 @@ class HUD(object):
             return "%s: %8.3f" % (axis, real)
         return ''
 
-    def setPosition(self, x, X, y, Y, z, Z, homed=True, hot=False):
+    def setPosition(self, x, X, y, Y, z, Z, homed=True, spinning=False):
         if homed:
-            self.mat.diffuseColor = coin.SbColor(0.0, 0.9, 0.0)
+            self.mat.diffuseColor = coin.SbColor(MachinekitPreferences.hudFontColorHomed())
         else:
-            self.mat.diffuseColor = coin.SbColor(0.9, 0.0, 0.9)
+            self.mat.diffuseColor = coin.SbColor(MachinekitPreferences.hudFontColorUnhomed())
         self.txt.string.setValues([self.axisFmt('X', x, X), self.axisFmt('Y', y, Y), self.axisFmt('Z', z, Z)])
         self.tPos.translation = (x, y, z)
 
-        if hot:
-            self.tMat.diffuseColor = coin.SbColor(0.9, 0.0, 0.0)
+        if spinning:
+            self.tMat.diffuseColor = coin.SbColor(MachinekitPreferences.hudToolColorSpinning())
         else:
-            self.tMat.diffuseColor = coin.SbColor(0.0, 0.0, 0.9)
+            self.tMat.diffuseColor = coin.SbColor(MachinekitPreferences.hudToolColorStopped())
 
     def setToolShape(self, shape):
         if self.tool:
             self.tSep.removeChild(self.tool)
-        if shape:
+        if shape and MachinekitPreferences.hudToolShowShape():
             buf = shape.writeInventor()
             cin = coin.SoInput()
             cin.setBuffer(buf)
@@ -160,7 +162,7 @@ class Hud(object):
         x, X = self.displayPos('x')
         y, Y = self.displayPos('y')
         z, Z = self.displayPos('z')
-        hot = self.spindleRunning()
+        spinning = self.spindleRunning()
         tool = self.mk['status.io.tool.nr']
         if tool is None:
             tool = 0
@@ -178,11 +180,12 @@ class Hud(object):
                         break
             self.hud.setToolShape(shape)
             self.tool = tool
-        self.hud.setPosition(x, X, y, Y, z, Z, self.mk.isHomed(), hot)
+        self.hud.setPosition(x, X, y, Y, z, Z, self.mk.isHomed(), spinning)
 
     def preferencesChanged(self):
         self.hud.updatePreferences()
-        self.updateUI()
+        if self.mk:
+            self.updateUI()
 
     def changed(self, service, msg):
         if self.mk:
@@ -197,3 +200,4 @@ def ToggleHud(mk):
     else:
         hud.terminate()
         hud = None
+
