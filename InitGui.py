@@ -1,7 +1,7 @@
 class MachinekitWorkbench(Workbench):
     "Test workbench object"
     import machinekit
-    Icon = machinekit.FileResource('machinekiticon.png')
+    Icon = machinekit.FileResource('machinekiticon.svg')
     MenuText = "Machinekit"
     ToolTip = "Workbench to interact with machinkit controlling a CNC"
 

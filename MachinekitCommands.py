@@ -13,7 +13,7 @@ import machinekit
 
 def _mkerror(service, msg):
     mb = PySide.QtGui.QMessageBox()
-    mb.setWindowIcon(machinekit.IconResource('machinekiticon.png'))
+    mb.setWindowIcon(machinekit.IconResource('machinekiticon.svg'))
     mb.setWindowTitle('Machinekit')
     mb.setTextFormat(PySide.QtCore.Qt.TextFormat.RichText)
     mb.setText("<div align='center'>%s</div>" % '<br/>'.join(msg.messages()))
@@ -93,7 +93,7 @@ class MachinekitCommandJog(MachinekitCommand):
     def GetResources(self):
         PathLog.track()
         return {
-                'Pixmap'    : machinekit.FileResource('machinekiticon.png'),
+                'Pixmap'    : machinekit.FileResource('machinekiticon-jog.png'),
                 'MenuText'  : 'Jog',
                 'ToolTip'   : 'Jog and DRO interface for machine setup'
                 }
@@ -107,7 +107,7 @@ class MachinekitCommandExecute(MachinekitCommand):
 
     def GetResources(self):
         return {
-                'Pixmap'    : machinekit.FileResource('machinekiticon.png'),
+                'Pixmap'    : machinekit.FileResource('machinekiticon-execute.png'),
                 'MenuText'  : 'Execute',
                 'ToolTip'   : 'Interface for controlling file execution'
                 }
@@ -125,7 +125,7 @@ class MachinekitCommandHud(MachinekitCommand):
 
     def GetResources(self):
         return {
-                'Pixmap'    : machinekit.FileResource('machinekiticon.png'),
+                'Pixmap'    : machinekit.FileResource('machinekiticon-hud.png'),
                 'MenuText'  : 'Hud',
                 'ToolTip'   : 'HUD DRO interface for machine setup'
                 }
