@@ -1,5 +1,6 @@
 import FreeCAD
 import FreeCADGui
+import MachinekitCombo
 import MachinekitExecute
 import MachinekitHud
 import MachinekitJog
@@ -130,6 +131,20 @@ class MachinekitCommandHud(MachinekitCommand):
                 'ToolTip'   : 'HUD DRO interface for machine setup'
                 }
 
+class MachinekitCommandCombo(MachinekitCommand):
+    def __init__(self):
+        super(self.__class__, self).__init__('Combo', ['command', 'status'])
+
+    def activate(self, mk):
+        return MachinekitCombo.Combo(mk)
+
+    def GetResources(self):
+        return {
+                'Pixmap'    : machinekit.FileResource('machinekiticon.png'),
+                'MenuText'  : 'Combo',
+                'ToolTip'   : 'Combo interface with all sub-interfaces'
+                }
+
 
 class MachinekitCommandPower(MachinekitCommand):
     def __init__(self, on):
@@ -194,7 +209,7 @@ class MachinekitCommandActivateNone(MachinekitCommand):
         return { 'MenuText'  : self.MenuText }
 
 ToolbarName  = 'MachinekitTools'
-ToolbarTools = [MachinekitCommandHud.__name__, MachinekitCommandJog.__name__, MachinekitCommandExecute.__name__]
+ToolbarTools = [MachinekitCommandCombo.__name__, MachinekitCommandHud.__name__, MachinekitCommandJog.__name__, MachinekitCommandExecute.__name__]
 MenuName     = 'Machine&kit'
 MenuList     = [MachinekitCommandHome.__name__, 'Separator'] + ToolbarTools
 
@@ -210,6 +225,7 @@ class MachinekitCommandCenter(object):
         self._addCommand(MachinekitCommandPower.__name__ + 'ON',   MachinekitCommandPower(True))
         self._addCommand(MachinekitCommandPower.__name__ + 'OFF',  MachinekitCommandPower(False))
         self._addCommand(MachinekitCommandHome.__name__,           MachinekitCommandHome())
+        self._addCommand(MachinekitCommandCombo.__name__,          MachinekitCommandCombo())
         self._addCommand(MachinekitCommandHud.__name__,            MachinekitCommandHud())
         self._addCommand(MachinekitCommandJog.__name__,            MachinekitCommandJog())
         self._addCommand(MachinekitCommandExecute.__name__,        MachinekitCommandExecute())
