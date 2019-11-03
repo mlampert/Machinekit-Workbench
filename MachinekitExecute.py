@@ -145,7 +145,7 @@ class Execute(object):
         else:
             self.job = None
 
-        self.ui.load.setEnabled(self.isIdle() and not self.job is None)
+        self.ui.load.setEnabled(self.isIdle() and not self.job is None and self.mk.isHomed())
 
     def toggleOrientation(self):
         if 'v' == self.oi:

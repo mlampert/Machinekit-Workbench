@@ -65,9 +65,7 @@ class MachinekitCommand(object):
         else:
             PathLog.debug('No machinekit instance active')
 
-        if dock is None:
-            PathLog.debug('No dock to activate')
-        else:
+        if dock:
             PathLog.debug('Activate first found instance')
             for closebutton in [widget for widget in dock.ui.children() if widget.objectName().endswith('closebutton')]:
                 closebutton.clicked.connect(lambda : self.terminateDock(dock))
@@ -134,9 +132,16 @@ class MachinekitCommandHud(MachinekitCommand):
 class MachinekitCommandCombo(MachinekitCommand):
     def __init__(self):
         super(self.__class__, self).__init__('Combo', ['command', 'status'])
+        self.combo = {}
 
     def activate(self, mk):
-        return MachinekitCombo.Combo(mk)
+        dock = self.combo.get(mk)
+        if dock:
+            dock.activate()
+            return None
+        dock = MachinekitCombo.Combo(mk)
+        self.combo[mk] = dock
+        return dock
 
     def GetResources(self):
         return {
@@ -145,6 +150,9 @@ class MachinekitCommandCombo(MachinekitCommand):
                 'ToolTip'   : 'Combo interface with all sub-interfaces'
                 }
 
+    def terminateDock(self, dock):
+        del self.combo[dock.mk]
+        return MachinekitCommand.terminateDock(self, dock)
 
 class MachinekitCommandPower(MachinekitCommand):
     def __init__(self, on):

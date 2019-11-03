@@ -38,6 +38,9 @@
     </property>
     <item>
      <widget class="QTabWidget" name="tabWidget">
+      <property name="tabPosition">
+       <enum>QTabWidget::South</enum>
+      </property>
       <property name="currentIndex">
        <number>0</number>
       </property>
@@ -51,13 +54,6 @@
         <string>Tab 2</string>
        </attribute>
       </widget>
-     </widget>
-    </item>
-    <item>
-     <widget class="QLabel" name="status">
-      <property name="text">
-       <string>TextLabel</string>
-      </property>
      </widget>
     </item>
    </layout>

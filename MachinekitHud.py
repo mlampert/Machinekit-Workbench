@@ -136,12 +136,20 @@ class HUD(object):
 class Hud(object):
     def __init__(self, mk, view):
         self.mk = mk
-        self.hud = HUD(view)
         self.tool = 0
-        self.updateUI()
-        self.hud.show()
+        self.hud = None
+        self.setView(view)
         self.mk.statusUpdate.connect(self.changed)
         self.mk.preferencesUpdate.connect(self.preferencesChanged)
+
+    def setView(self, view):
+        if self.hud and self.hud.view != view:
+            self.hud.hide()
+            self.hud = None
+        if not self.hud:
+            self.hud = HUD(view)
+            self.updateUI()
+            self.hud.show()
 
     def terminate(self):
         self.mk.statusUpdate.disconnect(self.changed)
@@ -193,11 +201,12 @@ class Hud(object):
 
 hud = None
 
-def ToggleHud(mk):
+def ToggleHud(mk, forceOn=False):
     global hud
-    if hud is None:
+    if hud is None or forceOn:
         hud = Hud(mk, FreeCADGui.ActiveDocument.ActiveView)
     else:
         hud.terminate()
         hud = None
+    return hud
 

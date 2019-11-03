@@ -2,6 +2,7 @@ import FreeCAD
 import FreeCADGui
 import MachinekitExecute
 import MachinekitJog
+import MachinekitHud
 
 import machinekit
 
@@ -16,14 +17,9 @@ class Combo(object):
         self.ui.tabWidget.addTab(self.jog.ui.dockWidgetContents, 'Jog')
         self.exe = MachinekitExecute.Execute(mk)
         self.ui.tabWidget.addTab(self.exe.ui.dockWidgetContents, 'Execute')
+        self.hud = MachinekitHud.Hud(mk, FreeCADGui.ActiveDocument.ActiveView)
         self.mk.statusUpdate.connect(self.changed)
         self.updateTitle()
-
-    def updateTitle(self):
-        if self.mk.isValid():
-            self.ui.setWindowTitle(self.mk['status.config.name'])
-        else:
-            self.ui.setWindowTitle('Machinekit')
 
     def terminate(self):
         self.mk.statusUpdate.disconnect(self.changed)
@@ -32,6 +28,17 @@ class Combo(object):
         self.jog = None
         self.exe.terminate()
         self.exe = None
+        self.hud.terminate()
+        self.hud = None
+
+    def activate(self):
+        self.hud.setView(FreeCADGui.ActiveDocument.ActiveView)
+
+    def updateTitle(self):
+        if self.mk.isValid():
+            self.ui.setWindowTitle(self.mk['status.config.name'])
+        else:
+            self.ui.setWindowTitle('Machinekit')
 
     def changed(self, service, msg):
         if self.mk:
