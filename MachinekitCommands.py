@@ -4,6 +4,7 @@ import MachinekitCombo
 import MachinekitExecute
 import MachinekitHud
 import MachinekitJog
+import MachinekitPreferences
 import PathScripts.PathLog as PathLog
 import PySide.QtCore
 import PySide.QtGui
@@ -11,6 +12,9 @@ import machinekit
 
 #PathLog.setLevel(PathLog.Level.INFO, PathLog.thisModule())
 #PathLog.trackModule(PathLog.thisModule())
+
+MachinekitUpdateMS  = 50  # update machinekit every 50ms
+MachinekitUiHoldoff = 20  # menus and toolbars once a second (20 * 50ms)
 
 def _mkerror(service, msg):
     mb = PySide.QtGui.QMessageBox()
@@ -130,11 +134,17 @@ class MachinekitCommandHud(MachinekitCommand):
                 }
 
 class MachinekitCommandCombo(MachinekitCommand):
-    def __init__(self):
+    def __init__(self, mk=None):
         super(self.__class__, self).__init__('Combo', ['command', 'status'])
         self.combo = {}
+        self.mk = mk
+
+    def IsActive(self):
+        return (not self.mk is None) or MachinekitCommand.IsActive(self)
 
     def activate(self, mk):
+        if self.mk:
+            mk = self.mk
         dock = self.combo.get(mk)
         if dock:
             dock.activate()
@@ -239,29 +249,41 @@ class MachinekitCommandCenter(object):
         self._addCommand(MachinekitCommandExecute.__name__,        MachinekitCommandExecute())
 
         self.active = [cmd.IsActive() for cmd in self.commands]
+        self.comboTB = {}
+        self.comboID = 0
+        self.holdoff = 0
 
     def _addCommand(self, name, cmd):
         self.commands.append(cmd)
         FreeCADGui.addCommand(name, cmd)
 
     def start(self):
-        self.timer.start(50)
+        self.timer.start(MachinekitUpdateMS)
 
     def stop(self):
         self.timer.stop()
 
+    def isActive(self):
+        return self.timer.isActive()
+
     def tick(self):
         machinekit._update()
-        active = [cmd.IsActive() for cmd in self.commands]
-        def aString(activation):
-            return '.'.join(['1' if a else '0' for a in activation])
-        if self.active != active:
-            PathLog.info("Command activation changed from %s to %s" % (aString(self.active), aString(active)))
-            FreeCADGui.updateCommands()
-            self.active = active
-        self.refreshActivationMenu()
+        self.holdoff = self.holdoff - 1
+        if self.holdoff < 1:
+            active = [cmd.IsActive() for cmd in self.commands]
+            def aString(activation):
+                return '.'.join(['1' if a else '0' for a in activation])
+            if self.active != active:
+                PathLog.info("Command activation changed from %s to %s" % (aString(self.active), aString(active)))
+                FreeCADGui.updateCommands()
+                self.active = active
+            self.refreshActivationMenu()
+            if MachinekitPreferences.addToPathWB():
+                self.refreshComboWB()
+            self.holdoff = MachinekitUiHoldoff
 
     def refreshActivationMenu(self):
+        modified = False
         menu = FreeCADGui.getMainWindow().menuBar().findChild(PySide.QtGui.QMenu, MenuName)
         if menu:
             mks = [mk for mk in machinekit.Instances() if mk.isValid()]
@@ -276,6 +298,7 @@ class MachinekitCommandCenter(object):
                         mk = [mk for mk in mks if mk.name() == name][0]
                         action.setEnabled(mk != MK)
                     else:
+                        modified = True
                         ma.removeAction(action)
                 for name in mkNames:
                     mk = [mk for mk in mks if mk.name() == name][0]
@@ -284,6 +307,7 @@ class MachinekitCommandCenter(object):
                     PathLog.track(mk.name(), [s for s in mk.instance.endpoint])
                     action.triggered.connect(lambda x=False, mk=mk: self.activate(mk))
                     ma.addAction(action)
+                    modified = True
             else:
                 if 1 != len(actions) or actions[0].objectName() != MachinekitCommandActivateNone.__name__:
                     for action in actions:
@@ -291,16 +315,66 @@ class MachinekitCommandCenter(object):
                     action = PySide.QtGui.QAction(MachinekitCommandActivateNone.MenuText, ma)
                     action.setEnabled(False)
                     ma.addAction(action)
+                    modified = True
+        return modified
+
+    def refreshComboWB(self):
+        if 'PathWorkbench' in FreeCADGui.listWorkbenches():
+            wb = FreeCADGui.getWorkbench('PathWorkbench')
+            if hasattr(wb, '__Workbench__'):
+                mks = {}
+                for mk in [mk for mk in machinekit.Instances() if mk.isValid()]:
+                    if self.comboTB.get(mk) is None:
+                        name = "%s_%d" % (MachinekitCommandCombo.__name__, self.comboID)
+                        cmd = MachinekitCommandCombo(mk)
+                        self._addCommand(name, cmd)
+                        mks[mk] = (name, cmd)
+                        self.comboID = self.comboID + 1
+                    else:
+                        mks[mk] = self.comboTB[mk]
+                tb = FreeCADGui.getMainWindow().findChild(PySide.QtGui.QToolBar, 'MachinekitCombo')
+                if tb:
+                    # first remove all tool buttons which are no longer valid
+                    for mk in [mk for mk in self.comboTB if not mk in mks]:
+                        actions = tb.actions()
+                        for a in actions:
+                            if a.text() == mk.name():
+                                print('removing', mk.name())
+                                tb.removeAction(action)
+                    for mk in [mk for mk in mks if not mk in self.comboTB]:
+                        icon =  machinekit.IconResource('machinekiticon.png'),
+                        print('adding', mk.name())
+                        tb.addAction(icon, mk.name(), mks[mk][1], MachinekitCommandCombo.Activated)
+                elif mks:
+                    if 'PathWorkbench' == FreeCADGui.activeWorkbench().name():
+                        print('createToolbar')
+                        tb = PySide.QtGui.QToolBar()
+                        tb.setObjectName('MachinekitCombo')
+                        for mk in [mk for mk in mks if not mk in self.comboTB]:
+                            icon =  machinekit.IconResource('machinekiticon.svg')
+                            print('adding+', mk.name(), icon)
+                            tb.addAction(icon, mk.name(), mks[mk][1].Activated)
+                        FreeCADGui.getMainWindow().addToolBar(tb)
+                    tools = [mks[mk][0] for mk in mks]
+                    print('appendToolbar', tools)
+                    wb.appendToolbar('MachinekitCombo', tools)
+                self.comboTB = mks
+            else:
+                print('no __Workbench__')
+
 
     def activate(self, mk):
         PathLog.track(mk)
         SetMK(mk)
 
 _commandCenter = MachinekitCommandCenter()
+if MachinekitPreferences.startOnLoad():
+    _commandCenter.start()
 
 def Activated():
     PathLog.track()
-    _commandCenter.start()
+    if not _commandCenter.isActive():
+        _commandCenter.start()
 
 def Deactivated():
     PathLog.track()

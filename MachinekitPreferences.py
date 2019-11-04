@@ -1,5 +1,8 @@
 import FreeCAD
 
+PreferenceStartOnLoad = 'GeneralStartOnLoad'
+PreferenceAddToPathWB = 'GeneralAddToPathWB'
+
 PreferenceHudWorkCoordinates = "HudWorkCoordinates"
 PreferenceHudMachineCoordinates = "HudMachineCoordinates"
 
@@ -14,6 +17,17 @@ PreferenceHudToolColorSpinning = "HudToolColorSpinning"
 
 def preferences():
     return FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Mod/Machinekit")
+
+def startOnLoad():
+    return preferences().GetBool(PreferenceStartOnLoad, True)
+
+def addToPathWB():
+    return preferences().GetBool(PreferenceAddToPathWB, True)
+
+def setGeneralPreferences(start, pathWB):
+    pref = preferences()
+    pref.SetBool(PreferenceStartOnLoad, start)
+    pref.SetBool(PreferenceAddToPathWB, pathWB)
 
 def hudFontName():
     return preferences().GetString(PreferenceHudFontName, 'mono')
@@ -81,6 +95,7 @@ class Page:
 
     def saveSettings(self):
         import machinekit
+        setGeneralPreferences(self.form.startOnLoad.isChecked(), self.form.addToPathWB.isChecked())
         setHudPreferences(self.form.workCoordinates.isChecked(), self.form.machineCoordinates.isChecked())
         setHudPreferencesFont(self.form.fontName.currentFont().family(), self.form.fontSize.value(), self.form.fontColorUnhomed.property('color'), self.form.fontColorHomed.property('color'))
         setHudPreferencesTool(self.form.toolShowShape.isChecked(), self.form.toolColorStopped.property('color'), self.form.toolColorSpinning.property('color'))
@@ -89,6 +104,9 @@ class Page:
 
     def loadSettings(self):
         import PySide.QtGui
+        self.form.startOnLoad.setChecked(startOnLoad())
+        self.form.addToPathWB.setChecked(addToPathWB())
+
         self.form.workCoordinates.setChecked(hudShowWorkCoordinates())
         self.form.machineCoordinates.setChecked(hudShowMachineCoordinates())
 

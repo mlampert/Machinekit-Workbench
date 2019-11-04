@@ -25,3 +25,8 @@ class MachinekitWorkbench(Workbench):
         MachinekitCommands.Deactivated()
 
 Gui.addWorkbench(MachinekitWorkbench)
+
+import MachinekitPreferences
+if MachinekitPreferences.startOnLoad():
+    import MachinekitCommands
+    MachinekitCommands.Activated()
