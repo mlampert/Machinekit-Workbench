@@ -90,7 +90,6 @@ class MKServiceHalStatus(MKServiceSubscribe):
         return 'halrcomp'
 
     def process(self, container):
-        #print(container)
         if container.type ==  TYPES.MT_HALRCOMP_ERROR:
             for note in container.note:
                 if 'fc_manualtoolchange' in note and 'does not exist' in note:
@@ -110,7 +109,7 @@ class MKServiceHalStatus(MKServiceSubscribe):
                     #print(pin)
                     pass
         else:
-            print(container)
+            print('halrcomp', container)
 
         if self.toolChange:
             self.notifyObservers(self.toolChange)
@@ -129,6 +128,23 @@ class MKServiceHalStatus(MKServiceSubscribe):
 
         service.sendCommand(cmd)
 
+def protoDump(obj, prefix=''):
+    if not prefix:
+        prefix = obj.DESCRIPTOR.name
+    for descriptor in obj.DESCRIPTOR.fields:
+        value = getattr(obj, descriptor.name)
+        if descriptor.type == descriptor.TYPE_MESSAGE:
+            pfix = "%s.%s" % (prefix, descriptor.name)
+            if descriptor.label == descriptor.LABEL_REPEATED:
+                for i, v in enumerate(value):
+                    protoDump(v, "%s.%d.%s" % (pfix, i, v.name))
+            else:
+                protoDump(value, pfix)
+        elif descriptor.type == descriptor.TYPE_ENUM:
+            print("%s.%s: %s (%s.%s)" % (prefix, descriptor.name, value, descriptor.enum_type.name, descriptor.enum_type.values_by_number[value].name))
+        else:
+            print("%s.%s: %s" % (prefix, descriptor.name, value))
+
 class MKServiceHalCommand(MKService):
     def __init__(self, context, name, properties):
         MKService.__init__(self, name, properties)
@@ -138,6 +154,10 @@ class MKServiceHalCommand(MKService):
         self.socket.connect(self.dsn)
         self.commandID = itertools.count()
         self.locked = threading.Lock()
+
+        # You wanna know what's going on?
+        # components? signals? anything else?
+        #self.sendCommand(MKCommand(TYPES.MT_HALRCOMMAND_DESCRIBE))
 
     def newTicket(self):
         with self.locked:
@@ -152,4 +172,7 @@ class MKServiceHalCommand(MKService):
         self.socket.send(buf)
 
     def process(self, container):
-        print(container)
+        if container.type == TYPES.MT_HALRCOMMAND_DESCRIPTION:
+            protoDump(container)
+        else:
+            print('halrcmd', container)
