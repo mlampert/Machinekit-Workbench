@@ -58,7 +58,7 @@ class MachinekitCommand(object):
 
     def IsActive(self):
         #PathLog.track(self.name)
-        return not ActiveMK() is None
+        return not (ActiveMK() is None or FreeCAD.ActiveDocument is None)
 
     def Activated(self):
         PathLog.track(self.name)

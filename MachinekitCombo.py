@@ -3,6 +3,7 @@ import FreeCADGui
 import MachinekitExecute
 import MachinekitJog
 import MachinekitHud
+import MachinekitStatus
 
 import machinekit
 
@@ -13,10 +14,14 @@ class Combo(object):
         self.ui = FreeCADGui.PySideUic.loadUi(machinekit.FileResource('combo.ui'))
         while 0 != self.ui.tabWidget.count():
             self.ui.tabWidget.removeTab(0)
+
         self.jog = MachinekitJog.Jog(mk)
         self.ui.tabWidget.addTab(self.jog.ui.dockWidgetContents, 'Jog')
         self.exe = MachinekitExecute.Execute(mk)
         self.ui.tabWidget.addTab(self.exe.ui.dockWidgetContents, 'Execute')
+        self.status = MachinekitStatus.Status(mk)
+        self.ui.tabWidget.addTab(self.status.ui.dockWidgetContents, 'Status')
+
         self.hud = MachinekitHud.Hud(mk, FreeCADGui.ActiveDocument.ActiveView)
         self.mk.statusUpdate.connect(self.changed)
         self.updateTitle()
