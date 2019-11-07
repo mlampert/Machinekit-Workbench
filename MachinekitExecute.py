@@ -127,6 +127,8 @@ class Execute(object):
         machinekit.execute = self
         self.mk.statusUpdate.connect(self.changed)
         self.mk.jobUpdate.connect(self.updateJob)
+        if not self.mk.getJob():
+            self.mk.updateJob()
 
     def terminate(self):
         self.mk.statusUpdate.disconnect(self.changed)
@@ -284,10 +286,12 @@ class Execute(object):
 
     def updateJob(self, job):
         title = '-.-'
-        job = self.mk.getJob()
+        if not job:
+            job = self.mk.getJob()
         if job:
             title = "%s.%s" % (job.Document.Label, job.Label)
         self.title.setText(title)
+        self.ui.execute.setTitle(title)
 
     def changed(self, service, updated):
         if self.mk:

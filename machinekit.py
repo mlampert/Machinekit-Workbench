@@ -70,7 +70,7 @@ class Machinekit(PySide.QtCore.QObject):
 
         self.service = {}
         self.job = None
-        self.needUpdateJob = False
+        self.needUpdateJob = True
 
         for service in _MKServiceRegister:
             if service:
@@ -179,7 +179,7 @@ class Machinekit(PySide.QtCore.QObject):
                 if updateServices:
                     self._updateServicesLocked()
                 if self.needUpdateJob:
-                    self._updateJob()
+                    self.updateJob()
                 for service in self.service.values():
                     if service:
                         service.ping()
@@ -189,7 +189,7 @@ class Machinekit(PySide.QtCore.QObject):
         #PathLog.track(service)
         if 'status.' in service.topicName():
             if ('status.task' == service.topicName() and 'file' in msg) or ('status.config' == service.topicName() and 'remote_path' in msg):
-                self._updateJob()
+                self.updateJob()
             self.statusUpdate.emit(service, msg)
         elif 'hal' in service.topicName():
             self.halUpdate.emit(service, msg)
@@ -303,7 +303,7 @@ class Machinekit(PySide.QtCore.QObject):
             return "%s/%s" % (base, path)
         return None
 
-    def _updateJob(self):
+    def updateJob(self):
         job = None
         path  = self['status.task.file']
         rpath = self.remoteFilePath()
