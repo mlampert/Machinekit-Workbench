@@ -295,7 +295,8 @@ class Execute(object):
 
     def changed(self, service, updated):
         if self.mk:
-            if service.topicName() == 'status.motion' and 'feed.rate' in updated:
-                self.updateOverride()
+            if not updated is None:
+                if service.topicName() == 'status.motion' and 'feed.rate' in updated:
+                    self.updateOverride()
 
             self.updateUI()

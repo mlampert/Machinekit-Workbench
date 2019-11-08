@@ -120,8 +120,11 @@ class Machinekit(PySide.QtCore.QObject):
             service = self.service.get(s)
             if ep is None:
                 if not service is None:
-                    PathLog.debug("Removing stale service: %s.%s" % (self.name(), s))
-                    service = removeService(s, service)
+                    PathLog.debug("Removing stale service: %s.%s (%s)" % (self.name(), s, type(s)))
+                    removeService(s, service)
+                    if s == 'status':
+                        for tn in service.topicNames():
+                            self.statusUpdate.emit(service[tn], None)
             else:
                 if service and ep.dsn != service.dsn:
                     PathLog.debug("Removing stale service: %s.%s" % (self.name(), s))

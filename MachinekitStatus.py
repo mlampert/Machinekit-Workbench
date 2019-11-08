@@ -61,12 +61,15 @@ class Status(object):
 
     def updateUI(self):
         if self.mk.isValid():
+            self.ui.dockWidgetContents.setEnabled(True)
             self.ui.statusEStop.setChecked(self.mk['status.io.estop'])
             self.ui.statusPower.setChecked(self.mk.isPowered())
             self.ui.statusHome.setChecked(self.mk.isHomed())
             self.ui.statusHome.setEnabled(self.mk.isPowered())
 
             self.ui.statusTaskMode.setText(STATUS.EmcTaskModeType.Name(self.mk['status.task.task.mode']).split('_')[-1])
+        else:
+            self.ui.dockWidgetContents.setEnabled(False)
 
     def changed(self, service, updated):
         if self.mk:

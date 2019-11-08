@@ -267,8 +267,9 @@ class MachinekitCommandCenter(object):
         return self.timer.isActive()
 
     def tick(self):
-        machinekit._update()
         self.holdoff = self.holdoff - 1
+        if machinekit.Instances() or self.holdoff < 1:
+            machinekit._update()
         if self.holdoff < 1:
             active = [cmd.IsActive() for cmd in self.commands]
             def aString(activation):
@@ -337,8 +338,8 @@ class MachinekitCommandCenter(object):
                     # first remove all tool buttons which are no longer valid
                     for mk in [mk for mk in self.comboTB if not mk in mks]:
                         actions = tb.actions()
-                        for a in actions:
-                            if a.text() == mk.name():
+                        for action in actions:
+                            if action.text() == mk.name():
                                 print('removing', mk.name())
                                 tb.removeAction(action)
                     for mk in [mk for mk in mks if not mk in self.comboTB]:
