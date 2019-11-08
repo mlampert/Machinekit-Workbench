@@ -274,15 +274,16 @@ class Execute(object):
         self.ui.override.setEnabled(powered and connected and self.mk['status.motion.feed.override'])
 
     def updateOverride(self):
-        self.ui.scaleInt.blockSignals(True)
-        self.ui.scaleInt.setMinimum(self.mk['status.config.override.feed.min'] * 100)
-        self.ui.scaleInt.setMaximum(self.mk['status.config.override.feed.max'] * 100)
-        self.ui.scaleInt.setSliderPosition(self.mk['status.motion.feed.rate'] * 100)
-        self.ui.scaleInt.blockSignals(False)
+        if self.mk['status.motion'] and self.mk['status.config']:
+            self.ui.scaleInt.blockSignals(True)
+            self.ui.scaleInt.setMinimum(self.mk['status.config.override.feed.min'] * 100)
+            self.ui.scaleInt.setMaximum(self.mk['status.config.override.feed.max'] * 100)
+            self.ui.scaleInt.setSliderPosition(self.mk['status.motion.feed.rate'] * 100)
+            self.ui.scaleInt.blockSignals(False)
 
-        self.ui.scaleVal.blockSignals(True)
-        self.ui.scaleVal.setValue(self.mk['status.motion.feed.rate'])
-        self.ui.scaleVal.blockSignals(False)
+            self.ui.scaleVal.blockSignals(True)
+            self.ui.scaleVal.setValue(self.mk['status.motion.feed.rate'])
+            self.ui.scaleVal.blockSignals(False)
 
     def updateJob(self, job):
         title = '-.-'

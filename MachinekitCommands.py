@@ -340,28 +340,28 @@ class MachinekitCommandCenter(object):
                         actions = tb.actions()
                         for action in actions:
                             if action.text() == mk.name():
-                                print('removing', mk.name())
+                                PathLog.track('removing', mk.name())
                                 tb.removeAction(action)
                     for mk in [mk for mk in mks if not mk in self.comboTB]:
-                        icon =  machinekit.IconResource('machinekiticon.png'),
-                        print('adding', mk.name())
-                        tb.addAction(icon, mk.name(), mks[mk][1], MachinekitCommandCombo.Activated)
+                        icon =  machinekit.IconResource('machinekiticon.svg')
+                        PathLog.track('adding', mk.name())
+                        tb.addAction(icon, mk.name(), mks[mk][1].Activated)
                 elif mks:
                     if 'PathWorkbench' == FreeCADGui.activeWorkbench().name():
-                        print('createToolbar')
+                        PathLog.track('createToolbar')
                         tb = PySide.QtGui.QToolBar()
                         tb.setObjectName('MachinekitCombo')
                         for mk in [mk for mk in mks if not mk in self.comboTB]:
                             icon =  machinekit.IconResource('machinekiticon.svg')
-                            print('adding+', mk.name(), icon)
+                            PathLog.track('adding+', mk.name(), icon)
                             tb.addAction(icon, mk.name(), mks[mk][1].Activated)
                         FreeCADGui.getMainWindow().addToolBar(tb)
                     tools = [mks[mk][0] for mk in mks]
-                    print('appendToolbar', tools)
+                    PathLog.track('appendToolbar', tools)
                     wb.appendToolbar('MachinekitCombo', tools)
                 self.comboTB = mks
             else:
-                print('no __Workbench__')
+                PathLog.track('no __Workbench__')
 
 
     def activate(self, mk):
