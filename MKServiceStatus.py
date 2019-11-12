@@ -1,3 +1,16 @@
+# Classes to deal with MK status updates.
+#
+# The MK status is split into 5 different subsections
+#   * config
+#   * interpreter
+#   * io
+#   * motion
+#   * task
+# One needs to subscribe to each one of those individually and MK sends
+# separate update messages for each. I'm not sure about the intent behind
+# the split since it seems one needs all of them anyway to do anything
+# sensible.
+
 import PathScripts.PathLog as PathLog
 import traceback
 
@@ -11,7 +24,30 @@ from machinetalk.protobuf.types_pb2 import MT_EMCSTAT_FULL_UPDATE
 PathLog.setLevel(PathLog.Level.NOTICE, PathLog.thisModule())
 #PathLog.trackModule(PathLog.thisModule())
 
+def returnAttribute(attr, path):
+    '''returnAttribute(attr, path) ... recursively traverse attr according to the attribute names in path and return the leaf attribute.
+    Will throw if path cannot be resolved successfully.'''
+    if len(path) > 0:
+        rest = path[1:]
+        if type(attr) == dict:
+            return returnAttribute(attr[path[0]], rest)
+        if type(attr) == list:
+            index = int(path[0])
+            if hasattr(attr[0], 'index'):
+                for element in attr:
+                    if element.index == index:
+                        return returnAttribute(element, rest)
+                return attr[path[0]] # this will throw, we didn't find what we were looking for
+            else:
+                return returnAttribute(attr[index], rest)
+        return returnAttribute(attr.__getattribute__(path[0]), rest)
+    return attr
+
 class MKServiceContainer(MKObserverable):
+    '''Base class to provide string based access to hierarchical attributes.
+    All containers are expected to be accessed by [] with a collection of
+    hierarchical attribute names.'''
+
     def __init__(self, valid):
         super().__init__()
         self.valid = valid
@@ -28,6 +64,8 @@ class MKServiceContainer(MKObserverable):
         return None
 
 class minmax(MKServiceContainer):
+    '''Class to deal with settings which have a min and a max value (like limits).
+    Optionally support for a default value.'''
     def __init__(self, min, max, default=None):
         super().__init__(True)
         self.min = min
@@ -35,6 +73,9 @@ class minmax(MKServiceContainer):
         self.default = default
 
 def mergeMinMax(mm, name, proto, attr, default=None):
+    '''mergeMinMax(mm, name, proto, attr, default=None) ... merge the values of mm with the
+    min_<attr> and max_<attr> values stored in proto (if any).
+    Return a list of hierarchical strings of the values which were updated.'''
     maxAttr = "max_%s" % attr
     minAttr = "min_%s" % attr
 
@@ -56,9 +97,11 @@ def mergeMinMax(mm, name, proto, attr, default=None):
     return updated
 
 def defaultPosition():
+    '''Helper function to return the origin position for all axes.'''
     return {'x':0.0, 'y':0.0, 'z':0.0, 'a':0.0, 'b':0.0, 'c':0.0, 'u':0.0, 'v':0.0, 'w':0.0}
 
 def extractPosition(position):
+    '''Return a dictionary of axis name vs. axis position for all axes which are stored in the proto buf position.'''
     pos = {}
     for d in ['x', 'y', 'z', 'a', 'b', 'c', 'u', 'v', 'w']:
         if position.HasField(d):
@@ -66,6 +109,8 @@ def extractPosition(position):
     return pos
 
 def mergePosition(self, posDict, name, proto, attr):
+    '''mergePosition(self, posDict, name, proto, attr) ... update self with the position attr stored in proto.
+    Return a list with the hierarchical name of the updated position (posDict.name).'''
     if proto.HasField(attr):
         pos = extractPosition(proto.__getattribute__(attr))
         if posDict is None:
@@ -79,6 +124,9 @@ def mergePosition(self, posDict, name, proto, attr):
     return []
 
 def mergeMember(self, member, proto, attr = None):
+    '''mergeMember(self, member, proto, attr=None) ... update self's attribute member with the value stored in proto as attr.
+    If attr is None the member is assumed to have the same name as attr.'''
+
     if attr is None:
         attr = member
     if proto.HasField(attr):
@@ -87,6 +135,8 @@ def mergeMember(self, member, proto, attr = None):
     return []
 
 def mergeDictionary(self, member, name, proto, attr):
+    '''mergeDictionary(self, member, name, proto, attr) ... assuming the attribute self.member is a dictionary
+    update its key name with the value stored in proto as attr.'''
     if attr is None:
         attr = name
     if proto.HasField(attr):
@@ -95,24 +145,9 @@ def mergeDictionary(self, member, name, proto, attr):
         return ["%s.%s" % (member, name)]
     return []
 
-def returnAttribute(attr, path):
-    if len(path) > 0:
-        rest = path[1:]
-        if type(attr) == dict:
-            return returnAttribute(attr[path[0]], rest)
-        if type(attr) == list:
-            index = int(path[0])
-            if hasattr(attr[0], 'index'):
-                for element in attr:
-                    if element.index == index:
-                        return returnAttribute(element, rest)
-                return attr[path[0]] # this will throw, we didn't find what we were looking for
-            else:
-                return returnAttribute(attr[index], rest)
-        return returnAttribute(attr.__getattribute__(path[0]), rest)
-    return attr
-
 class MKAxisConfig(MKServiceContainer):
+    '''Class used to hold the configuration of an axis in service status.config.'''
+
     def __init__(self, axis):
         super().__init__(True)
         self.index = axis.index
@@ -136,6 +171,8 @@ class MKAxisConfig(MKServiceContainer):
         return ["axis.%d.%s" % (self.index, u) for u in updated]
 
 class MKAxis(MKServiceContainer):
+    '''Class used to track all values of an axis in service status.motion.'''
+
     def __init__(self, axis):
         super().__init__(True)
         self.index = axis.index
@@ -175,14 +212,19 @@ class MKAxis(MKServiceContainer):
 
 
 class MKServiceStatusHandler(MKServiceContainer):
+    '''Base class for all service update handlers implementing the common interface.'''
+
     def __init__(self):
         super().__init__(False)
         self.fullUpdated = []
 
     def isValid(self):
+        '''Return True if the receiver service is fully initialised - which means it has
+        received at least one full updated.'''
         return self.valid
 
     def process(self, container):
+        '''Callback invoked to process a status update proto buf.'''
         obj = self.handlerObject(container)
         updated = self.fullUpdated
         if container.type == MT_EMCSTAT_FULL_UPDATE:
@@ -200,11 +242,28 @@ class MKServiceStatusHandler(MKServiceContainer):
             self.notifyObservers(updated)
 
     def handlerObject(self, container):
+        '''handlerObject(container) ... returns the object of interest in the receiver.
+        Can be overwritten by subclasses.'''
         return container
+
     def topicName(self):
+        '''The status topic the receiver is responsible for.
+        Must be overwritten by subclasses.'''
         return None
 
+    def processFull(self, proto):
+        '''processFull(proto) ... callback invoked for a full status update from MK.
+        Should be overwritten by subclasses.'''
+        pass
+
+    def processIncremental(self, proto):
+        '''processIncremental(proto) ... callback invoked for incremental updates from MK.
+        Should be overwritten by subclasses.'''
+        pass
+
+
 class MKServiceStatusHandlerConfig(MKServiceStatusHandler):
+    '''Class to track all status.config settings and updates.'''
 
     def topicName(self):
         return 'status.config'
@@ -254,6 +313,7 @@ class MKServiceStatusHandlerConfig(MKServiceStatusHandler):
         return updated
 
 class MKServiceStatusHandlerMotion(MKServiceStatusHandler):
+    '''Class to track and update status.motion attributes.'''
 
     def topicName(self):
         return 'status.motion'
@@ -377,6 +437,8 @@ class MKServiceStatusHandlerMotion(MKServiceStatusHandler):
         return updated
 
 class MKTool:
+    '''POD class to track a tool stored in MK's tooltable.'''
+
     def __init__(self, tool):
         self.index = tool.index
         self.id = tool.id
@@ -403,6 +465,8 @@ class MKTool:
         return ["tool.table.%d.%s" % (self.index, u) for u in updated]
 
 class MKServiceStatusHandlerIO(MKServiceStatusHandler):
+    '''Class tracking all status.io attributes and updates.'''
+
     def topicName(self):
         return 'status.io'
 
@@ -443,6 +507,8 @@ class MKServiceStatusHandlerIO(MKServiceStatusHandler):
 
 
 class MKServiceStatusHandlerTask(MKServiceStatusHandler):
+    '''Class to track all status.task attributes and updates.'''
+
     def topicName(self):
         return 'status.task'
 
@@ -478,6 +544,8 @@ class MKServiceStatusHandlerTask(MKServiceStatusHandler):
 
 
 class MKServiceStatusHandlerInterpreter(MKServiceStatusHandler):
+    '''Class to track all status.interp attributes and updates.'''
+
     def topicName(self):
         return 'status.interp'
 
@@ -535,7 +603,7 @@ class MKServiceStatusHandlerInterpreter(MKServiceStatusHandler):
 
 
 class MKServiceStatus(MKServiceSubscribe):
-    '''Gets and displayes the emc status'''
+    '''Gets and displayes the emc status with the help of the ....Handler... classes above.'''
 
     def __init__(self, context, name, properties):
         MKServiceSubscribe.__init__(self, context, name, properties)
@@ -558,6 +626,7 @@ class MKServiceStatus(MKServiceSubscribe):
         return self.handler[path[0]]
 
     def isValid(self, topics=None):
+        '''Return True if all topics are registered and valid.'''
         if topics is None:
             topics = self.topicNames()
         for topic in topics:

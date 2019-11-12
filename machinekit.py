@@ -1,3 +1,20 @@
+# The main controller classes for the Machinekit workbench and Qt integration.
+#
+# Client classes are expected to connect to the signals provided by the Machinekit
+# class and access each service and their attributes through their hierarchical name.
+#
+# Look at _MKServiceRegister to find the base service names this workbench interacts
+# with (with the exception of 'file' which is currently not processed by a specific
+# class). 'command' and 'halrcmd' are not publish/subscribe services and therefore
+# there are no attributes in their hierarchy.
+#
+# Similarly 'error' does not carry persistent state, it's more of a fire and forget
+# type of notification. Which means once a given notification has been processed by
+# at least one subscriber it is gone.
+#
+# The only component currently tracked in 'halrcomp' is 'fc_manualtoolchange',
+# should it exist.
+
 import FreeCAD
 import MKUtils
 import MachinekitInstance
@@ -49,6 +66,12 @@ def IconResource(filename):
     return PySide.QtGui.QIcon(FileResource(filename))
 
 class Machinekit(PySide.QtCore.QObject):
+    '''Class representing a MK instance and provide connection to Qt framework:
+      * managing all services
+      * providing access to all services 
+      * deal with all the zeroconf and proto buf settings
+      * trigger Qt signals on changes and upates from MK
+      '''
     statusUpdate      = PySide.QtCore.Signal(object, object)
     errorUpdate       = PySide.QtCore.Signal(object, object)
     commandUpdate     = PySide.QtCore.Signal(object, object)
@@ -189,7 +212,7 @@ class Machinekit(PySide.QtCore.QObject):
                 self.lastPing = time.monotonic()
 
     def changed(self, service, msg):
-        #PathLog.track(service)
+        '''Callback invoked by the framework when one of the services received an update.'''
         if 'status.' in service.topicName():
             if ('status.task' == service.topicName() and 'file' in msg) or ('status.config' == service.topicName() and 'remote_path' in msg):
                 self.updateJob()
@@ -209,11 +232,13 @@ class Machinekit(PySide.QtCore.QObject):
             self.commandUpdate.emit(service, msg)
 
     def providesServices(self, services):
+        '''Return True if the given services are detected by the receiver.'''
         if services is None:
             services = self.service
         return all([not self.service[s] is None for s in services])
 
     def isValid(self):
+        '''Return True if the basic status and command services are available.'''
         if self['status'] is None:
             return False
         if not self['status'].isValid():
@@ -223,20 +248,25 @@ class Machinekit(PySide.QtCore.QObject):
         return True
 
     def isPowered(self):
+        '''Return True if MK is powered on and ready to be used.'''
         return self.isValid() and (not self['status.io.estop']) and self['status.motion.enabled']
 
     def isHomed(self):
+        '''Return True if all axes are homed.'''
         return self.isPowered() and all([axis.homed != 0 for axis in self['status.motion.axis']])
 
     def setJob(self, job):
+        '''setJob(job) ... set the given job as the one currently loaded into MK.'''
         if self.job != job:
             self.job = job
             self.jobUpdate.emit(job)
 
     def getJob(self):
+        '''Return the job that is loaded into MK.'''
         return self.job
 
     def name(self):
+        '''Convenience function to return a good name for the receiver.'''
         if self.nam is None:
             self.nam = self['status.config.name']
             if self.nam is None:
@@ -244,13 +274,14 @@ class Machinekit(PySide.QtCore.QObject):
         return self.nam
 
     def mdi(self, cmd):
+        '''mdi(cmd) ... send given g-code as MDI to MK (switch to MDI mode if necessary).'''
         command = self['command']
         if command:
             sequence = MKUtils.taskModeMDI(self)
             sequence.append(MKCommandTaskExecute(cmd))
             command.sendCommands(sequence)
 
-    def power(self, on=None):
+    def power(self):
         '''power() ... unlocks estop and toggles power'''
         commands = []
         if self['status.io.estop']:
@@ -291,6 +322,7 @@ class Machinekit(PySide.QtCore.QObject):
             command.sendCommandSequence(sequence)
 
     def boundBox(self):
+        '''Return a BoundBox as defined by MK's x, y and z axes limits.'''
         x = self['status.config.axis.0.limit']
         y = self['status.config.axis.1.limit']
         z = self['status.config.axis.2.limit']
@@ -298,7 +330,8 @@ class Machinekit(PySide.QtCore.QObject):
             return FreeCAD.BoundBox()
         return FreeCAD.BoundBox(x.min, y.min, z.min, x.max, y.max, z.max)
 
-    def remoteFilePath(self, path = None):
+    def remoteFilePath(self, path=None):
+        '''remoteFilePath(path=None) ... return the path of the file on MK.'''
         if path is None:
             path = self.RemoteFilename
         base = self['status.config.remote_path']
@@ -307,6 +340,9 @@ class Machinekit(PySide.QtCore.QObject):
         return None
 
     def updateJob(self):
+        '''Download the g-code currently loaded into MK, check if it could be a FC Path.Job.
+        If the Path.Job is currently loaded trigger an update to everyone caring about these
+        things.'''
         job = None
         path  = self['status.task.file']
         rpath = self.remoteFilePath()
@@ -349,6 +385,7 @@ _MachinekitInstanceMonitor = MachinekitInstance.ServiceMonitor()
 _Machinekit = {}
 
 def _update():
+    '''Internal callback periodically invoked for houskeeping tasks.'''
     for inst in _MachinekitInstanceMonitor.instances(None):
         if _Machinekit.get(inst.uuid) is None:
             _Machinekit[inst.uuid] = Machinekit(inst)

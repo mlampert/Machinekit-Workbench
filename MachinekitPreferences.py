@@ -1,3 +1,5 @@
+# Classes and functions to deal with the Machinkit workbench's preferences
+
 import FreeCAD
 
 PreferenceStartOnLoad = 'GeneralStartOnLoad'
@@ -16,23 +18,29 @@ PreferenceHudToolColorStopped  = "HudToolColorStopped"
 PreferenceHudToolColorSpinning = "HudToolColorSpinning"
 
 def preferences():
+    '''Return the FC MK workbench preferences.'''
     return FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Mod/Machinekit")
 
 def startOnLoad():
+    '''Return True if 'start on load' is enabled (the default).'''
     return preferences().GetBool(PreferenceStartOnLoad, True)
 
 def addToPathWB():
+    '''Return True if MK Combo commands should be added to the Path workbench toolbar (the default).'''
     return preferences().GetBool(PreferenceAddToPathWB, True)
 
 def setGeneralPreferences(start, pathWB):
+    '''API to set the general preferences.'''
     pref = preferences()
     pref.SetBool(PreferenceStartOnLoad, start)
     pref.SetBool(PreferenceAddToPathWB, pathWB)
 
 def hudFontName():
+    '''Return the configured font name to be used for the HUD (default is mono).'''
     return preferences().GetString(PreferenceHudFontName, 'mono')
 
 def hudFontSize():
+    '''Return the configured font size to be used for the HUD (default is 33).'''
     return preferences().GetInt(PreferenceHudFontSize, 33)
 
 def _unsigned2fractions(u):
@@ -47,32 +55,41 @@ def _color(name, default, raw):
     return _unsigned2fractions(color)
 
 def hudFontColorUnhomed(raw=False):
+    '''Return the configured HUD font color to be used when the tool is not homed.'''
     return _color(PreferenceHudFontColorUnhomed, 0xffe600e6, raw)
 
 def hudFontColorHomed(raw=False):
+    '''Return the configured HUD font color to be used when the tool IS homed.'''
     return _color(PreferenceHudFontColorHomed, 0xff00e600, raw)
 
 def hudShowWorkCoordinates():
+    '''Retrn True if the work coordinates should be displayed in the HUD.'''
     return preferences().GetBool(PreferenceHudWorkCoordinates, True)
 
 def hudShowMachineCoordinates():
+    '''Retrn True if the machine coordinates should be displayed in the HUD.'''
     return preferences().GetBool(PreferenceHudMachineCoordinates, False)
 
 def hudToolShowShape():
+    '''Retrn True if the tool should be displayed by its actual shape, otherwise it'll be stylised by an inverted cone.'''
     return preferences().GetBool(PreferenceHudToolShowShape, True)
 
 def hudToolColorStopped(raw=False):
+    '''Return color to be used for the tool if the spindle is not rotating.'''
     return _color(PreferenceHudToolColorStopped, 0xff0000e5, raw)
 
 def hudToolColorSpinning(raw=False):
+    '''Return color to be used for the tool if the spindle IS rotating.'''
     return _color(PreferenceHudToolColorSpinning, 0xffe50000, raw)
 
 def setHudPreferences(workCoordinates, machineCoordinates):
+    '''Set HUD coordinate display preferences.'''
     pref = preferences()
     pref.SetBool(PreferenceHudWorkCoordinates, workCoordinates)
     pref.SetBool(PreferenceHudMachineCoordinates, machineCoordinates)
 
 def setHudPreferencesFont(fontName, fontSize, fontColorUnhomed, fontColorHomed):
+    '''Set HUD font preferences.'''
     pref = preferences()
     pref.SetInt(PreferenceHudFontSize, fontSize)
     pref.SetString(PreferenceHudFontName, fontName)
@@ -80,6 +97,7 @@ def setHudPreferencesFont(fontName, fontSize, fontColorUnhomed, fontColorHomed):
     pref.SetUnsigned(PreferenceHudFontColorHomed, fontColorHomed.rgba())
 
 def setHudPreferencesTool(showShape, toolColorStopped, toolColorSpinning):
+    '''Set HUD tool preferences.'''
     pref = preferences()
     pref.SetBool(PreferenceHudFontSize, showShape)
     pref.SetUnsigned(PreferenceHudToolColorStopped, toolColorStopped.rgba())
@@ -87,6 +105,7 @@ def setHudPreferencesTool(showShape, toolColorStopped, toolColorSpinning):
 
 
 class Page:
+    '''A class managing the Preferences editor for the Machinekit workbench.'''
 
     def __init__(self, parent=None):
         import FreeCADGui
@@ -94,6 +113,7 @@ class Page:
         self.form = FreeCADGui.PySideUic.loadUi(machinekit.FileResource('preferences.ui'))
 
     def saveSettings(self):
+        '''Store preferences from the UI back to the model so they can be saved.'''
         import machinekit
         setGeneralPreferences(self.form.startOnLoad.isChecked(), self.form.addToPathWB.isChecked())
         setHudPreferences(self.form.workCoordinates.isChecked(), self.form.machineCoordinates.isChecked())
@@ -103,6 +123,7 @@ class Page:
             mk.preferencesUpdate.emit()
 
     def loadSettings(self):
+        '''Load preferences and update the eitor accordingly.'''
         import PySide.QtGui
         self.form.startOnLoad.setChecked(startOnLoad())
         self.form.addToPathWB.setChecked(addToPathWB())

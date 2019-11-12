@@ -14,9 +14,14 @@ class Controller(object):
         self.mk.halUpdate.connect(self.changed)
 
     def isConnected(self):
+        '''Return True if MK is connected and responsive.'''
         return self.mk['halrcomp'] and self.mk['halrcmd']
 
     def changed(self, service, msg):
+        '''If MK's update includes a request for a tool change, present the user with
+        a dialog box and ask for confirmation.
+        On successful tool change update MK accordingly - if the user cancels the tool
+        change abort the task in progress in MK.'''
         if msg.changeTool():
             if 0 == msg.toolNumber():
                 PathLog.debug("TC clear")
@@ -48,6 +53,7 @@ class Controller(object):
             pass
 
     def getTC(self, nr):
+        '''getTC(nr) ... helper function to find the specified TC in the job loaded in MK.'''
         job = self.mk.getJob()
         if job:
             for tc in job.ToolController:

@@ -1,3 +1,6 @@
+# simple controller class providing an interface to the local linuxcnc
+# python binding.
+
 import linuxcnc as mk
 
 

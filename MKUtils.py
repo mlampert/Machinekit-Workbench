@@ -1,3 +1,4 @@
+# some helper classes which are used in multiple places
 import MKCommand
 import machinetalk.protobuf.status_pb2 as STATUS
 
@@ -23,6 +24,8 @@ def taskModeManual(service, force=False):
     return _taskMode(service, STATUS.EmcTaskModeType.Value('EMC_TASK_MODE_MANUAL'), force)
 
 def pathSignature(path):
+    '''Return a hash to identify a given Path. This is used to determine if a loaded Path in MK is still
+    up to date with the Job in FC.'''
     signature = 0
     for cmd in path.Commands:
         for c in cmd.toGCode():

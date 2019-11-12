@@ -1,3 +1,23 @@
+# Implementation of all commands the Machinekit workbench registers with FreeCAD.
+#
+# Special attention should be given to MachinekitCommandCenter. Integrating MK with FC
+# turned out to be a bit arkward because the existence and communication with MK is entirely
+# outside FC's control, which is not what the FC infrastructure is aiming for.
+#
+# It is required to monitor all MKs, detect new ones and tear down the ones which went away.
+# This requires dynamically modifying menu entries and tool bars.
+#
+# In order to deal with this situation the MK workbench has a concept of an 'active MK'. Once
+# a given MK instance has been set as "active" all tools and menu commands operate against
+# that MK instance. This is not ideal there are probably a ton of issues undiscovered so far.
+# Note that if only MK instance could be found it becomes automatically the active one.
+#
+# As it turned out having a separate MK workbench wasn't that useful anyway due to all the
+# switching between Path and MK. What I really wanted was for MK to extend Path. Also, this
+# idea of having independent views for the different aspects of MK turned out to be less
+# useful in practice - which is where the Combo view comes in which is added to the Path
+# workbench, one per discovered MK instance, making this much nicer to deal with.
+
 import FreeCAD
 import FreeCADGui
 import MachinekitCombo
@@ -17,6 +37,7 @@ MachinekitUpdateMS  = 50  # update machinekit every 50ms
 MachinekitUiHoldoff = 20  # menus and toolbars once a second (20 * 50ms)
 
 def _mkerror(service, msg):
+    '''Helper function to display an error in a message box.'''
     mb = PySide.QtGui.QMessageBox()
     mb.setWindowIcon(machinekit.IconResource('machinekiticon.svg'))
     mb.setWindowTitle('Machinekit')
@@ -51,16 +72,21 @@ def ActiveMK(setIfNone=False):
     return None
 
 class MachinekitCommand(object):
+    '''Base class for all Machinekit FC commands.
+    Takes care of adding the dock widget and managing its lifetime.'''
+
     def __init__(self, name, services):
         PathLog.track(services)
         self.name = name
         self.services = services
 
     def IsActive(self):
-        #PathLog.track(self.name)
+        '''MK commands are typically only available if an MK instance is active and there is at least one document open.'''
         return not (ActiveMK() is None or FreeCAD.ActiveDocument is None)
 
     def Activated(self):
+        '''Upon activation create the dock widget, install a signal handler for the close button
+        and add the dock widget to FC's mdi.'''
         PathLog.track(self.name)
         dock = None
 
@@ -76,15 +102,19 @@ class MachinekitCommand(object):
             FreeCADGui.getMainWindow().addDockWidget(PySide.QtCore.Qt.LeftDockWidgetArea, dock.ui)
 
     def serviceNames(self):
+        '''Return a list of services required for the command to function.'''
         return self.services
 
     def terminateDock(self, dock):
+        '''Callback invoked when the dock widget's close button is pressed.'''
         PathLog.track()
         dock.terminate()
         FreeCADGui.getMainWindow().removeDockWidget(dock.ui)
         dock.ui.deleteLater()
 
 class MachinekitCommandJog(MachinekitCommand):
+    '''FC command to open the Jog dock widget.'''
+
     def __init__(self):
         PathLog.track()
         super(self.__class__, self).__init__('Jog', ['command', 'status'])
@@ -102,6 +132,8 @@ class MachinekitCommandJog(MachinekitCommand):
                 }
 
 class MachinekitCommandExecute(MachinekitCommand):
+    '''FC command to open the Execute dock widget.'''
+
     def __init__(self):
         super(self.__class__, self).__init__('Exe', ['command', 'status'])
 
@@ -116,11 +148,12 @@ class MachinekitCommandExecute(MachinekitCommand):
                 }
 
 class MachinekitCommandHud(MachinekitCommand):
+    '''FC command to add the HUD to the currently active 3d view.'''
+
     def __init__(self):
         super(self.__class__, self).__init__('Hud', ['command', 'status'])
 
     def IsActive(self):
-        #PathLog.track(self.name)
         return not (ActiveMK() is None or FreeCADGui.ActiveDocument is None)
 
     def activate(self, mk):
@@ -134,6 +167,8 @@ class MachinekitCommandHud(MachinekitCommand):
                 }
 
 class MachinekitCommandCombo(MachinekitCommand):
+    '''FC command to start the combo dock in the Path workbench.'''
+
     def __init__(self, mk=None):
         super(self.__class__, self).__init__('Combo', ['command', 'status'])
         self.combo = {}
@@ -165,6 +200,8 @@ class MachinekitCommandCombo(MachinekitCommand):
         return MachinekitCommand.terminateDock(self, dock)
 
 class MachinekitCommandPower(MachinekitCommand):
+    '''FC menu command to toggle the power of the active MK instance.'''
+
     def __init__(self, on):
         super(self.__class__, self).__init__('Pwr', ['command', 'status'])
         self.on = on
@@ -183,6 +220,8 @@ class MachinekitCommandPower(MachinekitCommand):
                 }
 
 class MachinekitCommandHome(MachinekitCommand):
+    '''FC menu command to home all axes.'''
+
     def __init__(self):
         super(self.__class__, self).__init__('Home', ['command', 'status'])
 
@@ -200,6 +239,8 @@ class MachinekitCommandHome(MachinekitCommand):
                 }
 
 class MachinekitCommandActivate(MachinekitCommand):
+    '''FC menu command to activate a MK instance.'''
+
     MenuText = 'Activate'
 
     def __init__(self):
@@ -215,6 +256,8 @@ class MachinekitCommandActivate(MachinekitCommand):
                 }
 
 class MachinekitCommandActivateNone(MachinekitCommand):
+    '''FC menu command used when no MK instance can be found.'''
+
     MenuText = '--no MK found--'
 
     def __init__(self):
@@ -232,6 +275,9 @@ MenuName     = 'Machine&kit'
 MenuList     = [MachinekitCommandHome.__name__, 'Separator'] + ToolbarTools
 
 class MachinekitCommandCenter(object):
+    '''This class orchestrates MK discovery and the associated enabling/disabling of commands.
+    If enabled it also adds Combo commands to the Path toolbar.'''
+
     def __init__(self):
         self.timer = PySide.QtCore.QTimer()
         self.timer.setTimerType(PySide.QtCore.Qt.PreciseTimer)
@@ -267,6 +313,8 @@ class MachinekitCommandCenter(object):
         return self.timer.isActive()
 
     def tick(self):
+        '''Periodically called by the timer to updated menus and tool bars depending on
+        discovered and lost MK instances.'''
         self.holdoff = self.holdoff - 1
         if machinekit.Instances() or self.holdoff < 1:
             machinekit._update()

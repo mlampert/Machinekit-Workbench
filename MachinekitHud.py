@@ -1,3 +1,5 @@
+# Classes for displaying a HUD terminal in the 3d view.
+
 import FreeCAD
 import FreeCADGui
 import MachinekitPreferences
@@ -9,11 +11,14 @@ from MKCommand import *
 from pivy import coin
 
 class HUD(object):
+    '''Class which does the drawing in the 3d view. This is the coin3d dependent implementation.'''
 
     def __init__(self, view, coneHeight=5):
         self.view = view
         self.tsze = coneHeight
 
+        # DRO
+        # Camera used for the DRO to maintain the same size independent of 3d zoom level
         self.cam = coin.SoOrthographicCamera()
         self.cam.aspectRatio = 1
         self.cam.viewportMapping = coin.SoCamera.LEAVE_ALONE
@@ -38,8 +43,8 @@ class HUD(object):
         self.sep.addChild(self.fnt)
         self.sep.addChild(self.txt)
 
+        # Tool
         self.tTrf = coin.SoTransform()
-
         self.tPos = coin.SoTranslation()
 
         self.tMat = coin.SoMaterial()
@@ -61,6 +66,7 @@ class HUD(object):
         self.setPosition(0, 0, 0, 0, 0, 0, False, False)
 
     def updatePreferences(self):
+        '''Callback when preferences have changed to update the visuals accordingly.'''
         self.fsze     = MachinekitPreferences.hudFontSize()
         self.fnt.name = MachinekitPreferences.hudFontName()
         self.fnt.size = self.fsze
@@ -77,6 +83,7 @@ class HUD(object):
         self.showMachineCoordinates = MachinekitPreferences.hudShowMachineCoordinates()
 
     def axisFmt(self, axis, val, real):
+        '''Returns the formatted string for the given axis for the DRO.'''
         if self.showWorkCoordinates:
             if self.showMachineCoordinates:
                 return "%s: %8.3f %8.3f" % (axis, val, real)
@@ -86,6 +93,7 @@ class HUD(object):
         return ''
 
     def setPosition(self, x, X, y, Y, z, Z, homed=True, spinning=False):
+        '''Update the DRO and the tool position according to the given values.'''
         if homed:
             self.mat.diffuseColor = coin.SbColor(MachinekitPreferences.hudFontColorHomed())
         else:
@@ -99,6 +107,9 @@ class HUD(object):
             self.tMat.diffuseColor = coin.SbColor(MachinekitPreferences.hudToolColorStopped())
 
     def setToolShape(self, shape):
+        '''Takes the actual shape of the tool and copies it into the 3d view.
+        Should the tool in question be a legacy tool without a shape the tool
+        is stylized by the traditional inverted cone.'''
         if self.tool:
             self.tSep.removeChild(self.tool)
         if shape and MachinekitPreferences.hudToolShowShape():
@@ -121,11 +132,13 @@ class HUD(object):
         self.tSep.addChild(self.tool)
 
     def show(self):
+        '''Make HUD visible in 3d view.'''
         self.sup = self.render.addSuperimposition(self.sep)
         self.view.getSceneGraph().addChild(self.tSep)
         self.view.getSceneGraph().touch()
 
     def hide(self):
+        '''Hide HUD from 3d view.'''
         if self.sup:
             self.render.removeSuperimposition(self.sup)
             self.sup = None
@@ -134,6 +147,9 @@ class HUD(object):
 
 
 class Hud(object):
+    '''Coordinator class to manage a visual HUD and integrate it with the MK status updates
+    and FC's framework.'''
+
     def __init__(self, mk, view):
         self.mk = mk
         self.tool = 0
@@ -143,6 +159,8 @@ class Hud(object):
         self.mk.preferencesUpdate.connect(self.preferencesChanged)
 
     def setView(self, view):
+        '''setView(vieww) ... used to set the 3d view where to make the HUD visible.
+        If the HUD is already visible on a different view it is removed from there.'''
         if self.hud and self.hud.view != view:
             self.hud.hide()
             self.hud = None
@@ -152,11 +170,13 @@ class Hud(object):
             self.hud.show()
 
     def terminate(self):
+        '''Hide the HUD and take all structures down.'''
         self.mk.statusUpdate.disconnect(self.changed)
         self.mk = None
         self.hud.hide()
 
     def displayPos(self, axis):
+        '''displayPos(axis) ... returns the position of the given axis that should get displayed.'''
         actual = self.mk["status.motion.position.actual.%s" % axis]
         offset = self.mk["status.motion.offset.g5x.%s" % axis]
         if actual is None or offset is None:
@@ -164,9 +184,11 @@ class Hud(object):
         return actual - offset, actual
 
     def spindleRunning(self):
+        '''Return True if the spindle is currently rotating.'''
         return self.mk['status.motion.spindle.enabled'] and self.mk['status.motion.spindle.speed'] > 0
 
     def updateUI(self):
+        '''Callback invoked when something changed, will refresh the 3d view accordingly.'''
         x, X = self.displayPos('x')
         y, Y = self.displayPos('y')
         z, Z = self.displayPos('z')
@@ -191,11 +213,13 @@ class Hud(object):
         self.hud.setPosition(x, X, y, Y, z, Z, self.mk.isHomed(), spinning)
 
     def preferencesChanged(self):
+        '''Callback invoked when the Machinekit workbench preferences changed. Updates the view accoringly.'''
         self.hud.updatePreferences()
         if self.mk:
             self.updateUI()
 
     def changed(self, service, msg):
+        '''Callback invoked when MK sends a status update.'''
         if self.mk:
             self.updateUI()
 

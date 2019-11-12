@@ -1,4 +1,11 @@
 #!/usr/bin/python
+#
+# ncurses interface for some basic machine operations
+#  * power on/off
+#  * home all axis
+#  * jog around, incremental and continuous
+#  * override jogging speed
+#  * DRO
 
 import curses
 import linuxcnc

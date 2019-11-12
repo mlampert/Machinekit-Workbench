@@ -1,3 +1,6 @@
+# Currently not used - the 'file' service seems a bit elusive to generalise.
+# Its functionality is currently split in 'machinekit.py' and 'MachinekitExecute.py'
+
 from MKService import *
 from ftplib import FTP
 from urlparse import urlparse
@@ -13,3 +16,4 @@ class MKServiceFile(MKService):
         raise Exception("got: %s" % str(container))
 
     def uploadFile(self, fname):
+        pass

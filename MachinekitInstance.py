@@ -23,15 +23,19 @@ class ServiceEndpoint(object):
         return "%s@%s:%d" % (self.service, self.address(), self.port())
 
     def addressRaw(self):
+        '''Return the endoint address in its raw format.'''
         return self.addr
 
     def address(self):
+        '''Return the endpoint address as an IPv4 string.'''
         return "%d.%d.%d.%d" % (self.addr[0], self.addr[1], self.addr[2], self.addr[3])
 
     def port(self):
+        '''Return the endpoint port number.'''
         return self.prt
 
 class MachinekitInstance(object):
+    '''Representation of a discovered MK instance, tying all associated services together.'''
 
     def __init__(self, uuid, properties):
         self.uuid = uuid
@@ -57,10 +61,12 @@ class MachinekitInstance(object):
                     break
 
     def endpointFor(self, service):
+        '''endpointFor(service) ... return the MK endpoint for the given service.'''
         with self.lock:
             return self.endpoint.get(service)
 
     def services(self):
+        '''services() ... returns the list of service names discovered for this MK instance.'''
         with self.lock:
             return [service for service in self.endpoint]
 

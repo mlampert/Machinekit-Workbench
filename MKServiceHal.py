@@ -1,3 +1,5 @@
+# Classes to directly interact with the MK HAL layer.
+
 import PathScripts.PathLog as PathLog
 import itertools
 import machinetalk.protobuf.object_pb2 as OBJECT
@@ -13,8 +15,10 @@ from MKService import *
 PathLog.setLevel(PathLog.Level.INFO, PathLog.thisModule())
 
 def pinValueBit(container):
+    '''Helper function to get the bool value of a pin.'''
     return container.halbit
 def pinValueS32(container):
+    '''Helper function to get the int32_t value of a pin.'''
     return container.hals32
 
 PinValue = {
@@ -24,6 +28,7 @@ PinValue = {
         }
 
 class Pin(object):
+    '''Helper class represing a specific pin in HAL.'''
     def __init__(self, container):
         self.name = container.name.split('.')[-1]
         self.handle = container.handle
@@ -35,9 +40,15 @@ class Pin(object):
         #print("%s[%d]: %s" % (self.name, self.handle, self.value))
 
     def setValue(self, container):
+        '''setValue(container) ... Update receivers value from the container.'''
         self.value = PinValue[self.type](container)
 
 class ComponentManualToolChange(object):
+    '''Companion class to fc_manualtoolchange.hal
+    Should the FC manual tool change be loaded in HAL this class will interact with it
+    and prompt the user for the tool change - and then update HAL to either complete the
+    tool change or abort task execution.'''
+
     def __init__(self, container):
         self.name = container.name
         self.handle = container.comp_id
@@ -50,6 +61,8 @@ class ComponentManualToolChange(object):
             self.pinName[p.name] = p
 
     def updatePin(self, container):
+        '''Called by the framework to update the value of a pin.
+        Returns True if the value was updated.'''
         pin = self.pinID.get(container.handle)
         if pin:
             pin.setValue(container)
@@ -57,21 +70,26 @@ class ComponentManualToolChange(object):
         return False
 
     def getPin(self, name):
+        '''Return the FC manual tool change pin with the given name.'''
         return self.pinName.get(name)
 
     def pinValue(self, name, default):
+        '''Return the value of the given pin. If it can't be found return default.'''
         pin = self.pinName.get(name)
         if pin:
             return pin.value
         return default
     
     def changeTool(self):
+        '''Return True if a tool change is required.'''
         return self.pinValue('change', False) and not self.pinValue('changed', False)
 
     def toolChanged(self):
+        '''Return True if the tool change is completed.'''
         return not self.pinValue('change', False) and self.pinValue('changed', False)
 
     def toolNumber(self):
+        '''Return the number of the tool in the spindle (0 means no tool).'''
         return self.pinValue('number', 0)
 
 class MKServiceHalStatus(MKServiceSubscribe):
@@ -90,6 +108,7 @@ class MKServiceHalStatus(MKServiceSubscribe):
         return 'halrcomp'
 
     def process(self, container):
+        '''Called by the framework when a proto buf is received from MK's 'halrcomp' service.'''
         if container.type ==  TYPES.MT_HALRCOMP_ERROR:
             for note in container.note:
                 if 'fc_manualtoolchange' in note and 'does not exist' in note:
@@ -116,6 +135,7 @@ class MKServiceHalStatus(MKServiceSubscribe):
 
 
     def toolChanged(self, service, value):
+        '''Call once the tool chanage has been confirmed.'''
         pin = self.toolChange.getPin('changed')
 
         p = OBJECT.Pin()
@@ -129,6 +149,7 @@ class MKServiceHalStatus(MKServiceSubscribe):
         service.sendCommand(cmd)
 
 def protoDump(obj, prefix=''):
+    '''Debugging function to print an entire proto buf without knowing anything about its structure.'''
     if not prefix:
         prefix = obj.DESCRIPTOR.name
     for descriptor in obj.DESCRIPTOR.fields:
@@ -146,6 +167,8 @@ def protoDump(obj, prefix=''):
             print("%s.%s: %s" % (prefix, descriptor.name, value))
 
 class MKServiceHalCommand(MKService):
+    '''Class to interact directly with MK's HAL service.'''
+
     def __init__(self, context, name, properties):
         MKService.__init__(self, name, properties)
         self.identity = uuid.uuid1()
@@ -160,10 +183,12 @@ class MKServiceHalCommand(MKService):
         #self.sendCommand(MKCommand(TYPES.MT_HALRCOMMAND_DESCRIBE))
 
     def newTicket(self):
+        '''Return a unique value to be used as the ticket so responses can be matched to their request.'''
         with self.locked:
             return next(self.commandID)
 
     def sendCommand(self, msg):
+        '''Send the given message the MK's HAL service.'''
         ticket = self.newTicket()
         msg.msg.ticket = ticket
         msg.msg.serial = ticket
@@ -172,7 +197,9 @@ class MKServiceHalCommand(MKService):
         self.socket.send(buf)
 
     def process(self, container):
+        '''Called by the framework when MK's HAL service sends a response message to a command.'''
         if container.type == TYPES.MT_HALRCOMMAND_DESCRIPTION:
             protoDump(container)
         else:
             print('halrcmd', container)
+

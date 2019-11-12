@@ -1,3 +1,5 @@
+# Dock widget for jogging, including touching off and setting work coordinates
+
 import FreeCAD
 import FreeCADGui
 import MKUtils
@@ -23,6 +25,7 @@ EmcLinearUnits = {
         }
 
 class Jog(object):
+    '''Dock widget to control jogging and work coordinate offset.'''
     JogContinuous = 'Continuous'
 
     def __init__(self, mk):
@@ -85,6 +88,7 @@ class Jog(object):
         machinekit.jog = self
 
     def terminate(self):
+        '''Remove receiver from FC's UI.'''
         PathLog.track()
         self.mk.statusUpdate.disconnect(self.changed)
         self.mk = None
@@ -102,10 +106,12 @@ class Jog(object):
         self.isSetup = True
 
     def isConnected(self, topics=None):
+        '''Return true if MK is connected and responsive.'''
         PathLog.track()
         return self.mk.isValid()
 
     def setPosition(self, label, widget):
+        '''Set the working position of one or more axes.'''
         PathLog.track()
         commands = MKUtils.taskModeMDI(self.mk)
 
@@ -122,10 +128,12 @@ class Jog(object):
         self.mk['command'].sendCommands(commands)
 
     def joggingVelocity(self, axis):
+        '''Return the velocity to be used for jogging the given axis as defined by MK.'''
         PathLog.track()
         return self.mk['status.config.velocity.linear.default']
 
     def getJogIndexAndVelocity(self, axis):
+        '''Return a tuple of the given axis' index and velocity according to MK.'''
         PathLog.track()
         if axis in machinekit.AxesForward:
             index = machinekit.AxesForward.index(axis)
@@ -136,14 +144,20 @@ class Jog(object):
         return (index, veloc)
 
     def displayPos(self, axis):
+        '''Return the tools position as it should be displayed.'''
         PathLog.track()
         return self.mk["status.motion.position.actual.%s" % axis] - self.mk["status.motion.offset.g5x.%s" % axis]
 
     def jogContinuously(self):
+        '''Return True if the user wants to jog continously.'''
         PathLog.track()
         return self.ui.jogDistance.currentRow() == 0
 
     def jogAxesZero(self, axes):
+        '''jogAxesZero(axes) ... jog each of the specified axes to its 0 position.
+        Note that no velocity adaption is going on so if two or more axis are specified
+        each will reach its destination in its own time regardless of the progress of
+        the other axes.'''
         PathLog.track()
         PathLog.track(axes)
         jog = []
@@ -158,6 +172,7 @@ class Jog(object):
             self.mk['command'].sendCommandSequence(sequence)
 
     def jogAxes(self, axes):
+        '''jogAxes(axes) ... initiate a jog of all specified axes according to the current settings.'''
         PathLog.track(axes)
         if not self.jogContinuously():
             jog = []
@@ -172,6 +187,8 @@ class Jog(object):
                 self.mk['command'].sendCommandSequence(sequence)
 
     def jogAxesBegin(self, axes):
+        '''Calback when the user presses one of the jog buttons - if continuous jogging
+        is configured this starts the jog.'''
         PathLog.track(axes)
         if self.jogContinuously():
             jog = []
@@ -185,6 +202,8 @@ class Jog(object):
 
 
     def jogAxesEnd(self, axes):
+        '''Calback when the user releases one of the jog buttons - if continuous jogging
+        is configured this ends the jog.'''
         PathLog.track(axes)
         if self.jogContinuously():
             jog = []
@@ -197,6 +216,7 @@ class Jog(object):
                 self.mk['command'].sendCommandSequence(sequence)
 
     def jogAxesStop(self):
+        '''Explicitly stop all jog motions currently in progress.'''
         PathLog.track()
         sequence = [[cmd] for cmd in MKUtils.taskModeManual(self.mk)]
         sequence.append([MKCommandAxisAbort(i) for i in range(3)])
@@ -217,6 +237,8 @@ class Jog(object):
 
     # Selection.Observer
     def addSelection(self, doc, obj, sub, pnt):
+        '''FC callback if the selection in the 3d view changes - used to determine the destination
+        when the user wants to jog the tool to a specific position.'''
         PathLog.track()
         if self.ui.jogGoto.isChecked() and self.mk['status.motion.state'] == TYPES.RCS_DONE:
             x = pnt[0]
@@ -243,6 +265,7 @@ class Jog(object):
             self.mk['command'].sendCommandSequence(sequence)
 
     def updateDRO(self, connected, powered):
+        '''Callback invoked whenever the position or the work offset changed.'''
         PathLog.track()
         def updateAxisWidget(w, pos, homed):
             if homed == 0:
@@ -260,6 +283,7 @@ class Jog(object):
             updateAxisWidget(self.ui.posZ, actual['z'] - off['z'], axis[2].homed)
 
     def updateUI(self):
+        '''Callback invoked on any changes to update the view.'''
         PathLog.track()
         connected = self.isConnected()
         powered = self.mk.isPowered()
@@ -278,12 +302,14 @@ class Jog(object):
 
 
     def changed(self, service, msg):
+        '''Callback invoked whenever MK sent an update.'''
         PathLog.track(service, msg)
         if self.mk:
             if 'status' in service.topicName():
                 self.updateUI()
 
     def scanJob(self, forward):
+        '''scanJob(forward) ... move the tool around the outer perimeter of the job.'''
         PathLog.track()
         job = self.mk.getJob()
         if job and hasattr(job, 'Path') and job.Path:

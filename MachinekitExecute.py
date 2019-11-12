@@ -1,3 +1,5 @@
+# Dock widget to load and manage machine tasks.
+
 import FreeCAD
 import FreeCADGui
 import MKUtils
@@ -22,6 +24,8 @@ PathLog.setLevel(PathLog.Level.DEBUG, PathLog.thisModule())
 PathLog.trackModule(PathLog.thisModule())
 
 class TreeSelectionObserver(object):
+    '''An observer used to determine if currently a Job is selected.'''
+
     def __init__(self, notify):
         self.notify = notify
 
@@ -37,13 +41,8 @@ class TreeSelectionObserver(object):
     def clearSelection(self, doc):
         self.notify()
 
-class EventFilter(PySide.QtCore.QObject):
-    def eventFilter(self, obj, event):
-        if event.type() == PySide.QtCore.QChildEvent.Resize:
-            print(event.type(), event.size())
-        return PySide.QtCore.QObject.eventFilter(self, obj, event)
-
 class Execute(object):
+    '''Dock widget to load and manage an FC job into MK.'''
 
     def __init__(self, mk):
         self.mk = mk
@@ -117,9 +116,6 @@ class Execute(object):
         FreeCADGui.Selection.addObserver(self.observer)
         self.objectSelectionChanged()
 
-        #self.eventFilter = EventFilter()
-        #self.ui.installEventFilter(self.eventFilter)
-
         self.updateOverride()
         self.updateJob(self.mk.getJob())
         self.updateUI()
@@ -131,6 +127,7 @@ class Execute(object):
             self.mk.updateJob()
 
     def terminate(self):
+        '''Called when the dock is closed.'''
         self.mk.statusUpdate.disconnect(self.changed)
         self.mk = None
         FreeCADGui.Selection.removeObserver(self.observer)
@@ -138,9 +135,11 @@ class Execute(object):
             machinekit.execute = None
 
     def isConnected(self, topics=None):
+        '''Return True if the MK instance is accessible and responding.'''
         return self.mk.isValid()
 
     def objectSelectionChanged(self):
+        '''Callback when the selection in FC's tree view changes.'''
         jobs = [sel.Object for sel in FreeCADGui.Selection.getSelectionEx() if sel.Object.Name.startswith('Job')]
         if len(jobs) == 1:
             self.job = jobs[0]
@@ -150,6 +149,7 @@ class Execute(object):
         self.ui.load.setEnabled(self.isIdle() and not self.job is None and self.mk.isHomed())
 
     def toggleOrientation(self):
+        '''The layout of the widget can be horizontal or vertical, switch between those two.'''
         if 'v' == self.oi:
             self.ui.execute.layout().setDirection(PySide.QtGui.QBoxLayout.TopToBottom)
             self.ob.setIcon(PySide.QtGui.QApplication.style().standardIcon(PySide.QtGui.QStyle.SP_TitleBarShadeButton))
@@ -160,6 +160,7 @@ class Execute(object):
             self.oi = 'v'
 
     def isState(self, state):
+        '''Return True if the MK interpreter is currently in the given state.'''
         return STATUS.EmcInterpStateType.Value(state) == self.mk['status.interp.state']
 
     def isIdle(self):
@@ -168,6 +169,10 @@ class Execute(object):
         return self.isState('EMC_TASK_INTERP_PAUSED')
 
     def executeUpload(self):
+        '''Post process the current Path.Job and upload the resulting g-code into MK.
+        Tag the uploaded g-code with the job and a hash so we can determine if the uploaded
+        version is consistent with what is currently in FC.'''
+
         job = self.job
         if job:
             currTool = None
@@ -209,6 +214,7 @@ class Execute(object):
                 PathLog.error('Post processing failed')
 
     def executeRun(self):
+        '''Start the task to execute the uploaded g-code.'''
         sequence = MKUtils.taskModeMDI(self.mk)
         sequence.append(MKCommandTaskExecute('M6 T0'))
         sequence.append(MKCommandWaitUntil(lambda : self.mk['status.io.tool.nr'] <= 0))
@@ -217,20 +223,24 @@ class Execute(object):
         self.mk['command'].sendCommands(sequence)
 
     def executeStep(self):
+        '''Perform a single step of the uploaded g-code.'''
         sequence = MKUtils.taskModeAuto(self.mk)
         sequence.append(MKCommandTaskStep())
         self.mk['command'].sendCommands(sequence)
 
     def executePause(self):
+        '''Pause execution of the uploaded task.'''
         if self.isPaused():
             self.mk['command'].sendCommand(MKCommandTaskResume())
         else:
             self.mk['command'].sendCommand(MKCommandTaskPause())
 
     def executeStop(self):
+        '''Stop execution of the uploaded task.'''
         self.mk['command'].sendCommand(MKCommandTaskAbort())
 
     def executeScaleInt(self):
+        '''The feed override spin box has been edited, update the slider accordingly.'''
         percent = self.ui.scaleInt.value()
         scale = percent / 100.0
         self.ui.scaleVal.blockSignals(True)
@@ -238,10 +248,12 @@ class Execute(object):
         self.ui.scaleVal.blockSignals(False)
 
     def executeScaleVal(self):
+        '''The feed override has changed, send the new value to MK.'''
         scale = self.ui.scaleVal.value()
         self.mk['command'].sendCommand(MKCommandTrajSetScale(scale))
 
     def updateExecute(self, connected, powered):
+        '''Update the view according to the current state.'''
         if connected and powered:
             if self.isIdle():
                 self.ui.load.setEnabled(not self.job is None)
@@ -266,6 +278,7 @@ class Execute(object):
             self.ui.status.setText("%s:%s (%d/%d)" % (mode, state, self.mk['status.motion.line'], self.mk['status.task.line.total']))
 
     def updateUI(self):
+        '''Callback when some state changes require the view to be updated.'''
         connected = self.isConnected()
         powered = self.mk.isPowered()
 
@@ -274,6 +287,7 @@ class Execute(object):
         self.ui.override.setEnabled(powered and connected and self.mk['status.motion.feed.override'])
 
     def updateOverride(self):
+        '''Update the override slider and spin box.'''
         if self.mk['status.motion'] and self.mk['status.config']:
             self.ui.scaleInt.blockSignals(True)
             self.ui.scaleInt.setMinimum(self.mk['status.config.override.feed.min'] * 100)
@@ -286,6 +300,7 @@ class Execute(object):
             self.ui.scaleVal.blockSignals(False)
 
     def updateJob(self, job):
+        '''Callback when MK's loaded g-code changes. Depending on the g-code set the title accordingly.'''
         title = '-.-'
         if not job:
             job = self.mk.getJob()
@@ -295,6 +310,7 @@ class Execute(object):
         self.ui.execute.setTitle(title)
 
     def changed(self, service, updated):
+        '''Callback by the framework on status changes.'''
         if self.mk:
             if not updated is None:
                 if service.topicName() == 'status.motion' and 'feed.rate' in updated:

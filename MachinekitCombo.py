@@ -1,3 +1,11 @@
+# MachinekitCombo combines and manages all MK views.
+#
+# It creates a tab widget and puts all MK panels into it and also starts the HUD.
+# If the Combo is activated again, although it's already open it moves the HUD to
+# the currently active 3d view.
+#
+# This is the panel that is available in the Path workbench (if enabled).
+
 import FreeCAD
 import FreeCADGui
 import MachinekitExecute
@@ -8,6 +16,7 @@ import MachinekitStatus
 import machinekit
 
 class Combo(object):
+    '''Combination of all MK views for a single MK instance.'''
 
     def __init__(self, mk):
         self.mk = mk

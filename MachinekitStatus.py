@@ -1,3 +1,5 @@
+# Display and change of miscellaneous states
+
 import FreeCAD
 import FreeCADGui
 import MKUtils
@@ -22,6 +24,9 @@ PathLog.setLevel(PathLog.Level.DEBUG, PathLog.thisModule())
 PathLog.trackModule(PathLog.thisModule())
 
 class Status(object):
+    '''A class used by the Combo view to interact with the MK instance itself.
+    Currently it's only used to turn MK on/off and home the axes.'''
+
 
     def __init__(self, mk):
         self.mk = mk
@@ -46,7 +51,7 @@ class Status(object):
         self.mk['command'].sendCommands([MKCommandEstop(not self.mk['status.io.estop'])])
 
     def togglePower(self):
-        self.mk.power(not self.mk.isPowered())
+        self.mk.power()
 
     def toggleHomed(self):
         if self.mk.isHomed():

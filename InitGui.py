@@ -1,5 +1,5 @@
 class MachinekitWorkbench(Workbench):
-    "Test workbench object"
+    '''Registration and loading of the Machinekit workbench'''
     import machinekit
     Icon = machinekit.FileResource('machinekiticon.svg')
     MenuText = "Machinekit"
