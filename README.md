@@ -7,12 +7,20 @@ There are currently 4 interfaces available:
 * Hud     ... Head Up Display of coordinates and tool in the 3d view
 * Jog     ... jogging and setting the coordinate offset
 * Execute ... load, run/pause/stop Path Jobs in MK
-* MDI     ... console interface to issue MDI commands
+* Combo   ... Combination of all of above interfaces + a Status interface
+
+The workbench has preferences which allow some configuration - mostly of the Hud.
+
+Having said all that the main purpose of the workbench is to amend the Path workbench toolbar with a Combo
+command for each MK instance the workbench discovers. That way MK can be started directly from Path once the
+Job is setup and all its operations are ready for processing.
+
+The Machinekit workbench itself is mostly useful for development and debugging.
 
 ## Hud
-The Hud is pretty straight forward and currently non-configurable. The tool is blue-ish when the spindle
-is not turned on or the spindle speed is `0`. If the spindle is enabled and it's speed is not `0` it turns
-red-ish.
+The Hud is pretty straight forward and prints the coordinates (working and machine) in the 3d view and also
+draws the tool in its current position. The color of the DRO and the tool is used to indicate if power is on,
+all axes are homed and if the spindle is rotating or not. Check the preferences for details.
 
 ## Jog
 The Jog dock widget provides an interface to jog the tool around and to set the offset of the coordinate system.
@@ -43,12 +51,26 @@ rate is scaled and not the rapid rate. It is assumed that rapid moves are always
 At the very bottom is a status bar which is currently used for debugging - the most useful info is displayed
 at the end where the current line number and total number of lines are displayed.
 
+## Combo
+The Combo is used to integrate all views into a single tab widget for one MK instance. They are dynamically
+created as MK instances are discovered and added to the Path workbench (assuming this is enabled in the
+preferences).
+
+### Status
+A Status tab is added to the Combo dock in order to display and modify some status settings. Currently E-Stop,
+Power and Homing are available.
+
+
 ## MDI
-In order to use the MDI interface one must import the `machinekit` module and then call `MDI(..)`
+Issuing MDI commands is possible by accessing the Machinekit object and interacting with directly in the
+Python console. Use `machinekit.Instances()` or `machinekit.Any()` to get the MK instance you want to
+interact with and then use its `mdi(...)` member:
 ```
 import machinekit
-machinekit.MDI('G0X0Y0')
+mk = machinekit.Any()
+mk.mdi('G0X0Y0Z0')
 ```
+MK's task mode is automatically switched to MDI if necessary.
 
 ## Error messages and notifications
 Error messages are integrated into the FC log stream and show up like:
