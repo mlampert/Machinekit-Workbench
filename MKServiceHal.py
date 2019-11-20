@@ -22,8 +22,8 @@ def pinValueS32(container):
     return container.hals32
 
 PinValue = {
-        TYPES.ValueType.Value('HAL_BIT') : pinValueBit,
-        TYPES.ValueType.Value('HAL_S32') : pinValueS32,
+        TYPES.HAL_BIT : pinValueBit,
+        TYPES.HAL_S32 : pinValueS32,
         '' : None
         }
 

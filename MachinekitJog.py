@@ -19,9 +19,9 @@ PathLog.setLevel(PathLog.Level.INFO, PathLog.thisModule())
 Tolerance = 0.01
 
 EmcLinearUnits = {
-        STATUS.EmcLinearUnitsType.Value('LINEAR_UNITS_INCH') : 'in',
-        STATUS.EmcLinearUnitsType.Value('LINEAR_UNITS_MM')   : 'mm',
-        STATUS.EmcLinearUnitsType.Value('LINEAR_UNITS_CM')   : 'cm'
+        STATUS.LINEAR_UNITS_INCH : 'in',
+        STATUS.LINEAR_UNITS_MM   : 'mm',
+        STATUS.LINEAR_UNITS_CM   : 'cm'
         }
 
 class Jog(object):
@@ -287,7 +287,7 @@ class Jog(object):
         PathLog.track()
         connected = self.isConnected()
         powered = self.mk.isPowered()
-        isIdle = self.mk['status.interp.state'] == STATUS.EmcInterpStateType.Value('EMC_TASK_INTERP_IDLE')
+        isIdle = self.mk['status.interp.state'] == STATUS.EMC_TASK_INTERP_IDLE
 
         if connected:
             self.ui.setWindowTitle(self.mk['status.config.name'])

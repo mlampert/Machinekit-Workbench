@@ -264,7 +264,7 @@ class Execute(object):
             else:
                 self.ui.load.setEnabled(False)
                 self.ui.run.setEnabled(False)
-                self.ui.step.setEnabled(self.mk['status.motion.type'] == MOTCMDS.MotionType.Value('_EMC_MOTION_TYPE_NONE'))
+                self.ui.step.setEnabled(self.mk['status.motion.type'] == MOTCMDS._EMC_MOTION_TYPE_NONE)
                 self.ui.pause.setEnabled(True)
                 if self.ui.pause.isChecked() != self.isPaused():
                     self.ui.pause.setChecked(self.isPaused())
@@ -288,7 +288,7 @@ class Execute(object):
 
     def updateOverride(self):
         '''Update the override slider and spin box.'''
-        if self.mk['status.motion'] and self.mk['status.config']:
+        if self.mk['status.motion.feed'] and self.mk['status.config.override.feed']:
             self.ui.scaleInt.blockSignals(True)
             self.ui.scaleInt.setMinimum(self.mk['status.config.override.feed.min'] * 100)
             self.ui.scaleInt.setMaximum(self.mk['status.config.override.feed.max'] * 100)
