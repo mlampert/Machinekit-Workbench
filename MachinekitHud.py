@@ -10,15 +10,13 @@ import math
 from MKCommand import *
 from pivy import coin
 
-class HUD(object):
-    '''Class which does the drawing in the 3d view. This is the coin3d dependent implementation.'''
 
-    def __init__(self, view, coneHeight=5):
+class DRO(object):
+    '''Class displaying the DRO in the HUD.'''
+
+    def __init__(self, view):
         self.view = view
-        self.tsze = coneHeight
 
-        # DRO
-        # Camera used for the DRO to maintain the same size independent of 3d zoom level
         self.cam = coin.SoOrthographicCamera()
         self.cam.aspectRatio = 1
         self.cam.viewportMapping = coin.SoCamera.LEAVE_ALONE
@@ -37,33 +35,10 @@ class HUD(object):
 
         self.sep = coin.SoSeparator()
 
-        self.sep.addChild(self.cam)
         self.sep.addChild(self.pos)
         self.sep.addChild(self.mat)
         self.sep.addChild(self.fnt)
         self.sep.addChild(self.txt)
-
-        # Tool
-        self.tTrf = coin.SoTransform()
-        self.tPos = coin.SoTranslation()
-
-        self.tMat = coin.SoMaterial()
-        self.tMat.diffuseColor = coin.SbColor(0.4, 0.4, 0.4)
-        self.tMat.transparency = 0.8
-
-        self.tSep = coin.SoSeparator()
-        self.tSep.addChild(self.tPos)
-        self.tSep.addChild(self.tTrf)
-        self.tSep.addChild(self.tMat)
-        self.tool = None
-        self.setToolShape(None)
-
-        self.viewer = self.view.getViewer()
-        self.render = self.viewer.getSoRenderManager()
-        self.sup = None
-
-        self.updatePreferences()
-        self.setPosition(0, 0, 0, 0, 0, 0, False, False)
 
     def updatePreferences(self):
         '''Callback when preferences have changed to update the visuals accordingly.'''
@@ -99,6 +74,55 @@ class HUD(object):
         else:
             self.mat.diffuseColor = coin.SbColor(MachinekitPreferences.hudFontColorUnhomed())
         self.txt.string.setValues([self.axisFmt('X', x, X), self.axisFmt('Y', y, Y), self.axisFmt('Z', z, Z)])
+
+class HUD(object):
+    '''Class which does the drawing in the 3d view. This is the coin3d dependent implementation.'''
+
+    def __init__(self, view, coneHeight=5):
+        self.view = view
+        self.tsze = coneHeight
+
+        self.dro = DRO(view)
+
+        # Camera used for the DRO to maintain the same size independent of 3d zoom level
+        self.cam = coin.SoOrthographicCamera()
+        self.cam.aspectRatio = 1
+        self.cam.viewportMapping = coin.SoCamera.LEAVE_ALONE
+
+        self.sep = coin.SoSeparator()
+        self.sep.addChild(self.cam)
+        self.sep.addChild(self.dro.sep)
+
+        # Tool
+        self.tTrf = coin.SoTransform()
+        self.tPos = coin.SoTranslation()
+
+        self.tMat = coin.SoMaterial()
+        self.tMat.diffuseColor = coin.SbColor(0.4, 0.4, 0.4)
+        self.tMat.transparency = 0.8
+
+        self.tSep = coin.SoSeparator()
+        self.tSep.addChild(self.tPos)
+        self.tSep.addChild(self.tTrf)
+        self.tSep.addChild(self.tMat)
+        self.tool = None
+        self.setToolShape(None)
+
+        self.viewer = self.view.getViewer()
+        self.render = self.viewer.getSoRenderManager()
+        self.sup = None
+
+        self.updatePreferences()
+        self.setPosition(0, 0, 0, 0, 0, 0, False, False)
+
+    def updatePreferences(self):
+        '''Callback when preferences have changed to update the visuals accordingly.'''
+        self.dro.updatePreferences()
+
+    def setPosition(self, x, X, y, Y, z, Z, homed=True, spinning=False):
+        '''Update the DRO and the tool position according to the given values.'''
+        self.dro.setPosition(x, X, y, Y, z, Z, homed, spinning)
+
         self.tPos.translation = (x, y, z)
 
         if spinning:
