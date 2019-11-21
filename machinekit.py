@@ -94,6 +94,7 @@ class Machinekit(PySide.QtCore.QObject):
         self.service = {}
         self.job = None
         self.needUpdateJob = True
+        self.gcode = []
 
         for service in _MKServiceRegister:
             if service:
@@ -350,6 +351,7 @@ class Machinekit(PySide.QtCore.QObject):
         PathLog.info("%s, %s, %s" % (path, rpath, endpoint))
         if path is None or rpath is None or endpoint is None:
             self.needUpdateJob = True
+            self.gcode = []
         else:
             self.needUpdateJob = False
             if rpath == path:
@@ -359,14 +361,14 @@ class Machinekit(PySide.QtCore.QObject):
                 ftp.login()
                 ftp.retrbinary("RETR %s" % self.RemoteFilename, buf.write)
                 ftp.quit()
+
                 buf.seek(0)
-                line1 = buf.readline().decode()
-                line2 = buf.readline().decode()
-                line3 = buf.readline().decode()
-                if line1.startswith('(FreeCAD.Job: ') and line2.startswith('(FreeCAD.File: ') and line3.startswith('(FreeCAD.Signature: '):
-                    title     = line1[14:-2]
-                    filename  = line2[15:-2]
-                    signature = line3[20:-2]
+                self.gcode = [line.decode().strip() for line in buf]
+
+                if len(self.gcode) > 2 and self.gcode[0].startswith('(FreeCAD.Job: ') and self.gcode[1].startswith('(FreeCAD.File: ') and self.gcode[2].startswith('(FreeCAD.Signature: '):
+                    title     = self.gcode[0][14:-1]
+                    filename  = self.gcode[1][15:-1]
+                    signature = self.gcode[2][20:-1]
                     PathLog.debug("Loaded document: '%s' - '%s'" % (filename, title))
                     for docName, doc in FreeCAD.listDocuments().items():
                         PathLog.debug("Document: '%s' - '%s'" % (docName, doc.FileName))
