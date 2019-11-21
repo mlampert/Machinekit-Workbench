@@ -104,7 +104,7 @@ def setHudPreferencesTool(showShape, toolColorStopped, toolColorSpinning):
     pref.SetUnsigned(PreferenceHudToolColorSpinning, toolColorSpinning.rgba())
 
 
-class Page:
+class Page(object):
     '''A class managing the Preferences editor for the Machinekit workbench.'''
 
     def __init__(self, parent=None):
@@ -139,4 +139,17 @@ class Page:
         self.form.toolShowShape.setChecked(hudToolShowShape())
         self.form.toolColorStopped.setProperty('color', PySide.QtGui.QColor.fromRgba(hudToolColorStopped(True)))
         self.form.toolColorSpinning.setProperty('color', PySide.QtGui.QColor.fromRgba(hudToolColorSpinning(True)))
+
+_setup = False
+
+def Setup():
+    global _setup
+    if not _setup:
+        import FreeCADGui
+        import machinekit
+
+        icon = machinekit.FileResource('machinekiticon.svg')
+        FreeCADGui.addPreferencePage(Page, 'Machinekit')
+        FreeCADGui.addIcon('preferences-machinekit', icon)
+        _setup = True
 

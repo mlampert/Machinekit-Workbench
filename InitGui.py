@@ -6,15 +6,12 @@ class MachinekitWorkbench(Workbench):
     ToolTip = "Workbench to interact with machinkit controlling a CNC"
 
     def Initialize(self):
-        import FreeCADGui
         import MachinekitPreferences
-        FreeCADGui.addPreferencePage(MachinekitPreferences.Page, 'Machinekit')
-        FreeCADGui.addIcon('preferences-machinekit', self.Icon)
+        MachinekitPreferences.Setup()
 
         import MachinekitCommands
         MachinekitCommands.SetupToolbar(self)
         MachinekitCommands.SetupMenu(self)
-        pass
 
     def Activated(self):
         import MachinekitCommands

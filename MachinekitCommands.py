@@ -371,6 +371,7 @@ class MachinekitCommandCenter(object):
         if 'PathWorkbench' in FreeCADGui.listWorkbenches():
             wb = FreeCADGui.getWorkbench('PathWorkbench')
             if hasattr(wb, '__Workbench__'):
+                MachinekitPreferences.Setup()
                 mks = {}
                 for mk in [mk for mk in machinekit.Instances() if mk.isValid()]:
                     if self.comboTB.get(mk) is None:
