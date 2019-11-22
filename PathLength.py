@@ -24,8 +24,8 @@ class PathLength(object):
                 center = FreeCAD.Vector(cx, cy, cz)
                 radius = center.distanceToPoint(last)
                 r2 = center.distanceToPoint(end)
-                if not PathGeom.isRoughly(radius, r2):
-                    print("There's something wrong with %s, %.2f vs. %.2f" % (cmd, radius, r2))
+                if not PathGeom.isRoughly(radius, r2, 0.002):
+                    print("There's something wrong with %s, %.4f vs. %.4f" % (cmd, radius, r2))
                 angle = (end - center).getAngle(last - center)
                 dend = end - center
                 dlast = last - center
