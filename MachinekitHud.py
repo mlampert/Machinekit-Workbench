@@ -84,18 +84,41 @@ class DRO(Coin3DNode):
             self.mat.diffuseColor = coin.SbColor(MachinekitPreferences.hudFontColorUnhomed())
         self.txt.string.setValues([self.axisFmt('X', x, X), self.axisFmt('Y', y, Y), self.axisFmt('Z', z, Z)])
 
+def _formatTime(t):
+    s = int(t % 60)
+    m = int(t / 60)
+    if m > 59:
+        h = int(m / 60)
+        m = int(m % 60)
+        return "%d:%02d:%02d" % (h, m, s)
+    return "%d:%02d" % (m, s)
+
+def _formatTimeTotal(de, dt):
+    return _formatTime(dt)
+
+def _formatTimeRemaining(de, dt):
+    return "-%s" % _formatTime(dt - de)
+
+def _formatTimeRemainingTotal(de, dt):
+    return "-%s/%s" % (_formatTime(dt - de), _formatTime(dt))
+
 class TaskProgress(Coin3DNode):
     '''Class displaying the DRO in the HUD.'''
 
-    MinX = -0.98
-    MinY = -0.95
+    MinX = -0.90
     MaxX = +0.90
-    MaxY = -0.90
-
-    Color = MachinekitPreferences._unsigned2fractions(0xff0657ad)
+    MinY = -0.95
+    MaxY = -0.92
 
     def __init__(self, view):
         self.view = view
+        self.fnt = []
+        self.mat = []
+        self.txt = {}
+        self.sw  = {}
+        self.hide = True
+        self.show = True
+        self.formatTimeRemainingTotal = _formatTimeTotal
 
         # Background
         self.posB = coin.SoTranslation()
@@ -106,7 +129,6 @@ class TaskProgress(Coin3DNode):
         self.cooB.point.setValues(self.pointsScaledTo(1))
 
         self.sepB = coin.SoSeparator()
-
         self.sepB.addChild(self.posB)
         self.sepB.addChild(self.matB)
         self.sepB.addChild(self.cooB)
@@ -126,56 +148,21 @@ class TaskProgress(Coin3DNode):
         self.sepF.addChild(self.fceF)
 
         self.prgr = coin.SoSwitch()
+        self.prgr.addChild(self.sepB)
         self.prgr.addChild(self.sepF)
-        self.prgr.whichChild = coin.SO_SWITCH_NONE
+        self.prgr.whichChild = coin.SO_SWITCH_ALL
+        self.sw['bar'] = self.prgr
 
-        # Runtime
-        self.posR = coin.SoTranslation()
-        self.matR = self._material(0)
-        self.fntR = coin.SoFont()
-        self.txtR = coin.SoText2()
-
-        self.posR.translation = (self.MinX, self.MinY, 0)
-
-        fntSize = int(self.view.getSize()[1] * float(self.MaxY - self.MinY))
-
-        self.fntR.name = MachinekitPreferences.hudFontName()
-        self.fntR.size = fntSize
-
-        self.txtR.string = '0s'
-        self.txtR.justification = coin.SoText2.LEFT
-
-        self.sepR = coin.SoSeparator()
-        self.sepR.addChild(self.posR)
-        self.sepR.addChild(self.matR)
-        self.sepR.addChild(self.fntR)
-        self.sepR.addChild(self.txtR)
-
-        # Total time
-        self.posT = coin.SoTranslation()
-        self.matT = self._material(0)
-        self.fntT = coin.SoFont()
-        self.txtT = coin.SoText2()
-
-        self.posT.translation = (self.MaxX, self.MinY, 0)
-        self.fntT.name = MachinekitPreferences.hudFontName()
-        self.fntT.size = fntSize
-        self.txtT.string = '0s'
-        self.txtT.justification = coin.SoText2.RIGHT
-
-        self.sepT = coin.SoSeparator()
-        self.sepT.addChild(self.posT)
-        self.sepT.addChild(self.matT)
-        self.sepT.addChild(self.fntT)
-        self.sepT.addChild(self.txtT)
+        # Elapsed
+        self._createText('elapsed', '0:00', coin.SoText2.LEFT,  self.MinX, self.MaxY)
+        self._createText('total',   '0:00', coin.SoText2.RIGHT, self.MaxX, self.MaxY)
+        self._createText('percent',   '0%', coin.SoText2.CENTER,        0, self.MaxY)
 
         # tie everything together under a switch
         self.sep = coin.SoSwitch()
-        self.sep.addChild(self.sepB)
-        self.sep.addChild(self.prgr)
-        self.sep.addChild(self.sepR)
-        self.sep.addChild(self.sepT)
-        self.sep.whichChild = coin.SO_SWITCH_NONE
+        for sw in self.sw.values():
+            self.sep.addChild(sw)
+        self.sep.whichChild = coin.SO_SWITCH_ALL
 
         # timing
         self.start = None
@@ -185,14 +172,44 @@ class TaskProgress(Coin3DNode):
 
     def _material(self, transparency):
         mat = coin.SoMaterial()
-        mat.diffuseColor = coin.SbColor(self.Color)
+        mat.diffuseColor = coin.SbColor(MachinekitPreferences.hudProgrColor())
         mat.transparency = transparency
+        self.mat.append(mat)
         return mat
 
-    def _formatTime(self, dt):
-        m = int(dt / 60)
-        s = int(dt % 60)
-        return "%2d:%02d" % (m, s)
+    def _font(self):
+        fnt = coin.SoFont()
+        fnt.name = MachinekitPreferences.hudProgrFontName()
+        fnt.size = MachinekitPreferences.hudProgrFontSize()
+        self.fnt.append(fnt)
+        return fnt
+
+    def _text(self, label, string, justification=None):
+        txt = coin.SoText2()
+        txt.string = string
+        txt.justification = justification
+        self.txt[label] = txt
+        return txt
+
+    def _position(self, x, y):
+        pos = coin.SoTranslation()
+        pos.translation = (x, y, 0)
+        return pos
+
+    def _createText(self, label, string, justification, x, y):
+        pos = self._position(x, y)
+        mat = self._material(0)
+        fnt = self._font()
+        txt = self._text(label, string, justification)
+        sep = coin.SoSeparator()
+        sep.addChild(pos)
+        sep.addChild(mat)
+        sep.addChild(fnt)
+        sep.addChild(txt)
+        switch = coin.SoSwitch()
+        switch.addChild(sep)
+        switch.whichChild = coin.SO_SWITCH_ALL
+        self.sw[label] = switch
 
     def pointsScaledTo(self, factor):
         # points need to be counter clockwise for the face to look up (and have a color)
@@ -203,34 +220,53 @@ class TaskProgress(Coin3DNode):
         p3 = (x,         self.MaxY, 0)
         return [p0, p1, p2, p3]
 
+    def updatePreferences(self):
+        def setSwitch(name, on):
+            self.sw[name].whichChild = coin.SO_SWITCH_ALL if on else coin.SO_SWITCH_NONE
+
+        setSwitch('bar',        MachinekitPreferences.hudProgrBar())
+        setSwitch('elapsed',    MachinekitPreferences.hudProgrElapsed())
+        setSwitch('total',      MachinekitPreferences.hudProgrTotal() or MachinekitPreferences.hudProgrRemaining())
+        setSwitch('percent',    MachinekitPreferences.hudProgrPercent())
+        self.hide = MachinekitPreferences.hudProgrHide()
+        self.show = MachinekitPreferences.hudProgrBar() or MachinekitPreferences.hudProgrPercent() or MachinekitPreferences.hudProgrElapsed() or MachinekitPreferences.hudProgrRemaining() or MachinekitPreferences.hudProgrTotal()
+
+        if MachinekitPreferences.hudProgrTotal() and MachinekitPreferences.hudProgrRemaining():
+            self.formatTimeRemainingTotal = _formatTimeRemainingTotal
+        elif MachinekitPreferences.hudProgrRemaining():
+            self.formatTimeRemainingTotal = _formatTimeRemaining
+        else:
+            self.formatTimeRemainingTotal = _formatTimeTotal
+
     def setPosition(self, x, X, y, Y, z, Z, homed, spinning, mk):
         if not (mk is None or mk['status.motion.line'] is None or mk['status.task'] is None or mk['status.task.task.mode'] != STATUS.EMC_TASK_MODE_AUTO):
-            self.sep.whichChild = coin.SO_SWITCH_ALL
+            if self.show:
+                self.sep.whichChild = coin.SO_SWITCH_ALL
             if mk['status.motion.line'] > 0:
                 if self.start is None:
                     self.start = time.monotonic()
                     self.pathLength = PathLength.FromGCode(mk.gcode)
                 currentLine = mk['status.motion.line']
                 done = self.pathLength.percentDone(currentLine, mk['status.motion.distance_left'])
+                self.txt['percent'].string = "%d%%" % int(100 * done)
                 self.cooF.point.setValues(self.pointsScaledTo(done))
                 elapsed = time.monotonic() - self.start
-                self.txtR.string = self._formatTime(elapsed)
+                self.txt['elapsed'].string = _formatTime(elapsed)
                 if self.elapsed != int(elapsed): # and self.line != currentLine:
-                    estimated = elapsed / done
-                    self.txtT.string = self._formatTime(estimated)
+                    total = elapsed / done
+                    self.txt['total'].string = self.formatTimeRemainingTotal(elapsed, total)
                     self.elapsed = int(elapsed)
                     self.line = currentLine
-                self.prgr.whichChild = coin.SO_SWITCH_ALL
             else:
                 self.start = None
                 self.elapsed = None
                 self.line = None
-                self.prgr.whichChild = coin.SO_SWITCH_NONE
         else:
             self.start = None
             self.elapsed = None
             self.line = None
-            self.sep.whichChild = coin.SO_SWITCH_NONE
+            if self.hide:
+                self.sep.whichChild = coin.SO_SWITCH_NONE
 
 
 class Tool(Coin3DNode):

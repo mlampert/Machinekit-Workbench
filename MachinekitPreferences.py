@@ -17,6 +17,16 @@ PreferenceHudToolShowShape     = "HudToolShowShape"
 PreferenceHudToolColorStopped  = "HudToolColorStopped"
 PreferenceHudToolColorSpinning = "HudToolColorSpinning"
 
+PreferenceHudProgrHide      = "HudProgrHide"
+PreferenceHudProgrBar       = "HudProgrBar"
+PreferenceHudProgrPercent   = "HudProgrPercent"
+PreferenceHudProgrElapsed   = "HudProgrElapsed"
+PreferenceHudProgrRemaining = "HudProgrRemaining"
+PreferenceHudProgrTotal     = "HudProgrTotal"
+PreferenceHudProgrFontName  = "HudProgrFontName"
+PreferenceHudProgrFontSize  = "HudProgrFontSize"
+PreferenceHudProgrColor     = "HudProgrColor"
+
 def preferences():
     '''Return the FC MK workbench preferences.'''
     return FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Mod/Machinekit")
@@ -56,11 +66,11 @@ def _color(name, default, raw):
 
 def hudFontColorUnhomed(raw=False):
     '''Return the configured HUD font color to be used when the tool is not homed.'''
-    return _color(PreferenceHudFontColorUnhomed, 0xffe600e6, raw)
+    return _color(PreferenceHudFontColorUnhomed, 0xffaa00aa, raw)
 
 def hudFontColorHomed(raw=False):
     '''Return the configured HUD font color to be used when the tool IS homed.'''
-    return _color(PreferenceHudFontColorHomed, 0xff00e600, raw)
+    return _color(PreferenceHudFontColorHomed, 0xff007400, raw)
 
 def hudShowWorkCoordinates():
     '''Retrn True if the work coordinates should be displayed in the HUD.'''
@@ -81,6 +91,42 @@ def hudToolColorStopped(raw=False):
 def hudToolColorSpinning(raw=False):
     '''Return color to be used for the tool if the spindle IS rotating.'''
     return _color(PreferenceHudToolColorSpinning, 0xffe50000, raw)
+
+def hudProgrHide():
+    '''Return True if progress is hidden if task is inactive.'''
+    return preferences().GetBool(PreferenceHudProgrHide, True)
+
+def hudProgrBar():
+    '''Return True if progress bar is displayed.'''
+    return preferences().GetBool(PreferenceHudProgrBar, True)
+
+def hudProgrElapsed():
+    '''Return True if the elapsed time of task execution is displayed.'''
+    return preferences().GetBool(PreferenceHudProgrElapsed, True)
+
+def hudProgrRemaining():
+    '''Return True if the remaining time of task execution is displayed.'''
+    return preferences().GetBool(PreferenceHudProgrRemaining, False)
+
+def hudProgrTotal():
+    '''Return True if the total time of task execution is displayed.'''
+    return preferences().GetBool(PreferenceHudProgrTotal, True)
+
+def hudProgrPercent():
+    '''Return True if the percent of task execution completion is displayed.'''
+    return preferences().GetBool(PreferenceHudProgrPercent, False)
+
+def hudProgrFontName():
+    '''Return the progress font name'''
+    return preferences().GetString(PreferenceHudProgrFontName, 'mono')
+
+def hudProgrFontSize():
+    '''Return the progress font size'''
+    return preferences().GetInt(PreferenceHudProgrFontSize, 30)
+
+def hudProgrColor(raw=False):
+    '''Return the color for the task progress display.'''
+    return _color(PreferenceHudProgrColor, 0xff0657ad, raw)
 
 def setHudPreferences(workCoordinates, machineCoordinates):
     '''Set HUD coordinate display preferences.'''
@@ -103,9 +149,21 @@ def setHudPreferencesTool(showShape, toolColorStopped, toolColorSpinning):
     pref.SetUnsigned(PreferenceHudToolColorStopped, toolColorStopped.rgba())
     pref.SetUnsigned(PreferenceHudToolColorSpinning, toolColorSpinning.rgba())
 
+def setHudPreferencesProgr(hide, bar, percent, elapsed, remaining, total, fontName, fontSize, color):
+    '''Set HUD progress preferences.'''
+    pref = preferences()
+    pref.SetBool(PreferenceHudProgrHide,        hide)
+    pref.SetBool(PreferenceHudProgrBar,         bar)
+    pref.SetBool(PreferenceHudProgrPercent,     percent)
+    pref.SetBool(PreferenceHudProgrElapsed,     elapsed)
+    pref.SetBool(PreferenceHudProgrRemaining,   remaining)
+    pref.SetBool(PreferenceHudProgrTotal,       total)
+    pref.SetString(PreferenceHudProgrFontName,  fontName)
+    pref.SetInt(PreferenceHudProgrFontSize,     fontSize)
+    pref.SetUnsigned(PreferenceHudProgrColor,   color.rgba())
 
-class Page(object):
-    '''A class managing the Preferences editor for the Machinekit workbench.'''
+class PageGeneral(object):
+    '''A class managing the general Preferences editor for the Machinekit workbench.'''
 
     def __init__(self, parent=None):
         import FreeCADGui
@@ -116,9 +174,6 @@ class Page(object):
         '''Store preferences from the UI back to the model so they can be saved.'''
         import machinekit
         setGeneralPreferences(self.form.startOnLoad.isChecked(), self.form.addToPathWB.isChecked())
-        setHudPreferences(self.form.workCoordinates.isChecked(), self.form.machineCoordinates.isChecked())
-        setHudPreferencesFont(self.form.fontName.currentFont().family(), self.form.fontSize.value(), self.form.fontColorUnhomed.property('color'), self.form.fontColorHomed.property('color'))
-        setHudPreferencesTool(self.form.toolShowShape.isChecked(), self.form.toolColorStopped.property('color'), self.form.toolColorSpinning.property('color'))
         for mk in machinekit.Instances():
             mk.preferencesUpdate.emit()
 
@@ -128,6 +183,27 @@ class Page(object):
         self.form.startOnLoad.setChecked(startOnLoad())
         self.form.addToPathWB.setChecked(addToPathWB())
 
+class PageHUD(object):
+    '''A class managing the HUD Preferences editor for the Machinekit workbench.'''
+
+    def __init__(self, parent=None):
+        import FreeCADGui
+        import machinekit
+        self.form = FreeCADGui.PySideUic.loadUi(machinekit.FileResource('preferences-hud.ui'))
+
+    def saveSettings(self):
+        '''Store preferences from the UI back to the model so they can be saved.'''
+        import machinekit
+        setHudPreferences(self.form.workCoordinates.isChecked(), self.form.machineCoordinates.isChecked())
+        setHudPreferencesFont(self.form.fontName.currentFont().family(), self.form.fontSize.value(), self.form.fontColorUnhomed.property('color'), self.form.fontColorHomed.property('color'))
+        setHudPreferencesTool(self.form.toolShowShape.isChecked(), self.form.toolColorStopped.property('color'), self.form.toolColorSpinning.property('color'))
+        setHudPreferencesProgr(self.form.progrHide.isChecked(), self.form.progrBar.isChecked(), self.form.progrPercent.isChecked(), self.form.progrElapsed.isChecked(), self.form.progrRemaining.isChecked(), self.form.progrTotal.isChecked(), self.form.progrFontName.currentFont().family(), self.form.progrFontSize.value(), self.form.progrColor.property('color'))
+        for mk in machinekit.Instances():
+            mk.preferencesUpdate.emit()
+
+    def loadSettings(self):
+        '''Load preferences and update the eitor accordingly.'''
+        import PySide.QtGui
         self.form.workCoordinates.setChecked(hudShowWorkCoordinates())
         self.form.machineCoordinates.setChecked(hudShowMachineCoordinates())
 
@@ -140,6 +216,16 @@ class Page(object):
         self.form.toolColorStopped.setProperty('color', PySide.QtGui.QColor.fromRgba(hudToolColorStopped(True)))
         self.form.toolColorSpinning.setProperty('color', PySide.QtGui.QColor.fromRgba(hudToolColorSpinning(True)))
 
+        self.form.progrHide.setChecked(hudProgrHide())
+        self.form.progrBar.setChecked(hudProgrBar())
+        self.form.progrPercent.setChecked(hudProgrPercent())
+        self.form.progrElapsed.setChecked(hudProgrElapsed())
+        self.form.progrRemaining.setChecked(hudProgrRemaining())
+        self.form.progrTotal.setChecked(hudProgrTotal())
+        self.form.progrFontSize.setValue(hudProgrFontSize())
+        self.form.progrFontName.setCurrentFont(PySide.QtGui.QFont(hudProgrFontName()))
+        self.form.progrColor.setProperty('color', PySide.QtGui.QColor.fromRgba(hudProgrColor(True)))
+
 _setup = False
 
 def Setup():
@@ -149,7 +235,8 @@ def Setup():
         import machinekit
 
         icon = machinekit.FileResource('machinekiticon.svg')
-        FreeCADGui.addPreferencePage(Page, 'Machinekit')
         FreeCADGui.addIcon('preferences-machinekit', icon)
+        FreeCADGui.addPreferencePage(PageGeneral, 'Machinekit')
+        FreeCADGui.addPreferencePage(PageHUD,     'Machinekit')
         _setup = True
 
