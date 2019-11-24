@@ -239,15 +239,18 @@ class TaskProgress(Coin3DNode):
             self.formatTimeRemainingTotal = _formatTimeTotal
 
     def setPosition(self, x, X, y, Y, z, Z, homed, spinning, mk):
-        if not (mk is None or mk['status.motion.line'] is None or mk['status.task'] is None or mk['status.task.task.mode'] != STATUS.EMC_TASK_MODE_AUTO):
+        if not (mk is None or mk['status.config'] is None or mk['status.motion.line'] is None or mk['status.task'] is None or mk['status.task.task.mode'] != STATUS.EMC_TASK_MODE_AUTO):
             if self.show:
                 self.sep.whichChild = coin.SO_SWITCH_ALL
             if mk['status.motion.line'] > 0:
                 if self.start is None:
                     self.start = time.monotonic()
-                    self.pathLength = PathLength.FromGCode(mk.gcode)
-                currentLine = mk['status.motion.line']
-                done = self.pathLength.percentDone(currentLine, mk['status.motion.distance_left'])
+                    self.pathLength = PathLength.FromGCode(mk.gcode, mk['status.config.velocity.max'])
+                currentLine = mk['status.motion.line'] - 1
+                if currentLine < 0:
+                    currentLine = 0 # this should never happen, never say never
+                distanceToGo = mk['status.motion.distance_left']
+                done = self.pathLength.percentDone(currentLine, distanceToGo, True)
                 self.txt['percent'].string = "%d%%" % int(100 * done)
                 self.cooF.point.setValues(self.pointsScaledTo(done))
                 elapsed = time.monotonic() - self.start
