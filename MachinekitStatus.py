@@ -73,6 +73,10 @@ class Status(object):
             self.ui.statusHome.setEnabled(self.mk.isPowered())
 
             self.ui.statusTaskMode.setText(STATUS.EmcTaskModeType.Name(self.mk['status.task.task.mode']).split('_')[-1])
+            self.ui.statusVx.setText("%7.2f" % self.mk['status.motion.axis.0.velocity'])
+            self.ui.statusVy.setText("%7.2f" % self.mk['status.motion.axis.1.velocity'])
+            self.ui.statusVz.setText("%7.2f" % self.mk['status.motion.axis.2.velocity'])
+            self.ui.statusV.setText("%7.2f" % self.mk['status.motion.current_vel'])
         else:
             self.ui.dockWidgetContents.setEnabled(False)
 

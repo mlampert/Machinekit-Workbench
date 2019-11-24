@@ -278,6 +278,8 @@ class MKServiceStatusHandlerConfig(MKServiceStatusHandler):
         self.velocity = {}
         self.velocity['linear'] = minmax(config.min_linear_velocity, config.max_linear_velocity, config.default_linear_velocity)
         self.velocity['angular'] = minmax(config.min_linear_velocity, config.max_linear_velocity, config.default_angular_velocity)
+        self.velocity['max'] = config.max_velocity
+        self.velocity['default'] = config.default_velocity
         self.name = config.name
         self.units = {}
         self.units['time'] = config.time_units
@@ -296,6 +298,8 @@ class MKServiceStatusHandlerConfig(MKServiceStatusHandler):
         updated += mergeMinMax(self.override['spindle'], 'override.spindle', config, 'spindle_override', default='default_spindle_speed')
         updated += mergeMinMax(self.velocity['linear'], 'velocity.linear', config, 'linear_velocity', default='')
         updated += mergeMinMax(self.velocity['angular'], 'velocity.angular', config, 'angular_velocity', default='')
+        updated += mergeDictionary(self, 'velocity', 'max', config, 'max_velocity')
+        updated += mergeDictionary(self, 'velocity', 'default', config, 'default_velocity')
         updated += mergeMember(self, 'name', config)
         updated += mergeMember(self, 'axis_mask', config)
         updated += mergeMember(self, 'remote_path', config)
