@@ -206,7 +206,8 @@ class Execute(object):
                         sequence.append(MKCommandTaskExecute("G10 L1 P%d R%g Z%g" % (tc.ToolNumber, radius, offset)))
                     sequence.extend(MKUtils.taskModeAuto(self.mk))
                     sequence.append(MKCommandTaskReset(False))
-                    sequence.append(MKCommandOpenFile(self.mk.remoteFilePath(), False))
+                    sequence.extend([MKCommandOpenFile(self.mk.remoteFilePath(), True), MKCommandOpenFile(self.mk.remoteFilePath(), False)])
+                    sequence.append(MKCommandTaskRun(True))
                     self.mk['command'].sendCommands(sequence)
                 else:
                     PathLog.error('No endpoint found')
