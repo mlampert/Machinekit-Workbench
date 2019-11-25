@@ -11,7 +11,7 @@
 # the split since it seems one needs all of them anyway to do anything
 # sensible.
 
-import PathScripts.PathLog as PathLog
+import MKLog
 import traceback
 
 from MKObserverable import *
@@ -21,8 +21,7 @@ from machinetalk.protobuf.status_pb2 import *
 from machinetalk.protobuf.types_pb2 import MT_EMCSTAT_FULL_UPDATE
 
 
-PathLog.setLevel(PathLog.Level.NOTICE, PathLog.thisModule())
-#PathLog.trackModule(PathLog.thisModule())
+MKLog.setLevel(MKLog.Level.NOTICE, MKLog.thisModule())
 
 def returnAttribute(attr, path):
     '''returnAttribute(attr, path) ... recursively traverse attr according to the attribute names in path and return the leaf attribute.
@@ -58,7 +57,7 @@ class MKServiceContainer(MKObserverable):
                 attr = self.__getattribute__(path[0])
                 return returnAttribute(attr, path[1:])
             except:
-                PathLog.error("unknown container path = %s (%s)" % (path, self))
+                MKLog.error("unknown container path = %s (%s)" % (path, self))
                 traceback.print_stack()
                 raise
         return None
@@ -228,15 +227,15 @@ class MKServiceStatusHandler(MKServiceContainer):
         obj = self.handlerObject(container)
         updated = self.fullUpdated
         if container.type == MT_EMCSTAT_FULL_UPDATE:
-            PathLog.debug("update full: %s" % self.topicName())
+            MKLog.debug("update full: %s" % self.topicName())
             updated = self.processFull(obj)
             self.fullUpdated = updated
             self.valid = True
         elif self.isValid():
-            PathLog.debug("update incr: %s" % self.topicName())
+            MKLog.debug("update incr: %s" % self.topicName())
             updated = self.processIncremental(obj)
         else:
-            PathLog.debug("update ignd: %s" % self.topicName())
+            MKLog.debug("update ignd: %s" % self.topicName())
             updated = None
         if updated:
             self.notifyObservers(updated)
@@ -651,7 +650,7 @@ class MKServiceStatus(MKServiceSubscribe):
         elif container.HasField('emc_status_task'):
             self.handler['task'].process(container)
         else:
-            PathLog.notice("status[%s]: %s" % (container.type, [s[0].name for s in container.ListFields()]))
+            MKLog.notice("status[%s]: %s" % (container.type, [s[0].name for s in container.ListFields()]))
 
     def ping(self):
         for observer in self.pingme:

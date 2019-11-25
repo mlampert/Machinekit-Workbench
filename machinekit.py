@@ -15,10 +15,9 @@
 # The only component currently tracked in 'halrcomp' is 'fc_manualtoolchange',
 # should it exist.
 
-import FreeCAD
+import MKLog
 import MKUtils
 import MachinekitInstance
-import PathScripts.PathLog as PathLog
 import PySide.QtCore
 import PySide.QtGui
 import ftplib
@@ -30,6 +29,12 @@ import threading
 import time
 import zmq
 
+try:
+    import FreeCAD
+    _FC = True
+except:
+    _FC = False
+
 from MKCommand          import *
 from MKServiceCommand   import *
 from MKServiceError     import *
@@ -37,8 +42,7 @@ from MKServiceHal       import *
 from MKServicePreview   import *
 from MKServiceStatus    import *
 
-PathLog.setLevel(PathLog.Level.INFO, PathLog.thisModule())
-#PathLog.trackModule(PathLog.thisModule())
+MKLog.setLevel(MKLog.Level.INFO, MKLog.thisModule())
 
 AxesForward  = ['X', 'Y', 'Z', 'A', 'B', 'C', 'U', 'V', 'W']
 AxesBackward = ['x', 'y', 'z', 'a', 'b', 'c', 'u', 'v', 'w']
@@ -124,8 +128,8 @@ class Machinekit(PySide.QtCore.QObject):
             msg = socket.recv_multipart()[-1]
             rx.ParseFromString(msg)
         except Exception as e:
-            PathLog.error("%s exception: %s" % (service.name, e))
-            PathLog.error("    msg = '%s'" % msg)
+            MKLog.error("%s exception: %s" % (service.name, e))
+            MKLog.error("    msg = '%s'" % msg)
         else:
             # ignore all ping messages for now
             if rx.type != TYPES.MT_PING:
@@ -147,21 +151,21 @@ class Machinekit(PySide.QtCore.QObject):
             service = self.service.get(s)
             if ep is None:
                 if not service is None:
-                    PathLog.debug("Removing stale service: %s.%s (%s)" % (self.name(), s, type(s)))
+                    MKLog.debug("Removing stale service: %s.%s (%s)" % (self.name(), s, type(s)))
                     removeService(s, service)
                     if s == 'status':
                         for tn in service.topicNames():
                             self.statusUpdate.emit(service[tn], None)
             else:
                 if service and ep.dsn != service.dsn:
-                    PathLog.debug("Removing stale service: %s.%s" % (self.name(), s))
+                    MKLog.debug("Removing stale service: %s.%s" % (self.name(), s))
                     service = removeService(s, service)
                 if service is None:
                     cls = _MKServiceRegister.get(s)
                     if cls is None:
-                        PathLog.error("service %s not supported" % s)
+                        MKLog.error("service %s not supported" % s)
                     else:
-                        PathLog.info("Connecting to service: %s.%s" % (self.name(), s))
+                        MKLog.info("Connecting to service: %s.%s" % (self.name(), s))
                         service = cls(self.Context, s, ep.properties)
                         self.service[s] = service
                         service.attach(self)
@@ -187,12 +191,12 @@ class Machinekit(PySide.QtCore.QObject):
                         msg = socket.recv_multipart()[-1]
                         rx.ParseFromString(msg)
                     except Exception as e:
-                        PathLog.error("%s exception: %s" % (service.name, e))
-                        PathLog.error("    msg = '%s'" % msg)
+                        MKLog.error("%s exception: %s" % (service.name, e))
+                        MKLog.error("    msg = '%s'" % msg)
                     else:
                         # ignore all ping messages for now
                         if rx.type != TYPES.MT_PING:
-                            #PathLog.debug(rx)
+                            #MKLog.debug(rx)
                             processed = False
                             if updateServices:
                                 self._updateServicesLocked()
@@ -203,7 +207,7 @@ class Machinekit(PySide.QtCore.QObject):
                                     processed = True
                                     break
                             if not processed:
-                                PathLog.debug("unconnected socket? %s" % socket)
+                                MKLog.debug("unconnected socket? %s" % socket)
 
             if (time.monotonic() - self.lastPing) > 0.5:
                 if updateServices:
@@ -225,11 +229,11 @@ class Machinekit(PySide.QtCore.QObject):
             self.halUpdate.emit(service, msg)
         elif 'error' in service.topicName():
             self.errorUpdate.emit(service, msg)
-            display = PathLog.info
+            display = MKLog.info
             if msg.isError():
-                display = PathLog.error
+                display = MKLog.error
             if msg.isText():
-                display = PathLog.notice
+                display = MKLog.notice
             for m in msg.messages():
                 display(m)
         elif 'command' in service.topicName():
@@ -330,9 +334,14 @@ class Machinekit(PySide.QtCore.QObject):
         x = self['status.config.axis.0.limit']
         y = self['status.config.axis.1.limit']
         z = self['status.config.axis.2.limit']
-        if x is None or y is None or z is None:
-            return FreeCAD.BoundBox()
-        return FreeCAD.BoundBox(x.min, y.min, z.min, x.max, y.max, z.max)
+        if _FC:
+            if x is None or y is None or z is None:
+                return FreeCAD.BoundBox()
+            return FreeCAD.BoundBox(x.min, y.min, z.min, x.max, y.max, z.max)
+        else:
+            if x is None or y is None or z is None:
+                return []
+            return [x.min, y.min, z.min, x.max, y.max, z.max]
 
     def remoteFilePath(self, path=None):
         '''remoteFilePath(path=None) ... return the path of the file on MK.'''
@@ -351,7 +360,7 @@ class Machinekit(PySide.QtCore.QObject):
         path  = self['status.task.file']
         rpath = self.remoteFilePath()
         endpoint = self.instance.endpoint.get('file')
-        PathLog.info("%s, %s, %s" % (path, rpath, endpoint))
+        MKLog.info("%s, %s, %s" % (path, rpath, endpoint))
         if path is None or rpath is None or endpoint is None:
             self.needUpdateJob = True
             self.gcode = []
@@ -372,17 +381,18 @@ class Machinekit(PySide.QtCore.QObject):
                     title     = self.gcode[0][14:-1]
                     filename  = self.gcode[1][15:-1]
                     signature = self.gcode[2][20:-1]
-                    PathLog.debug("Loaded document: '%s' - '%s'" % (filename, title))
-                    for docName, doc in FreeCAD.listDocuments().items():
-                        PathLog.debug("Document: '%s' - '%s'" % (docName, doc.FileName))
-                        if doc.FileName == filename:
-                            job = doc.getObject(title)
-                            if job:
-                                sign = MKUtils.pathSignature(job.Path)
-                                if str(sign) == signature:
-                                    PathLog.info("Job %s.%s loaded." % (job.Document.Label, job.Label))
-                                else:
-                                    PathLog.warning("Job %s.%s is out of date!" % (job.Document.Label, job.Label))
+                    MKLog.debug("Loaded document: '%s' - '%s'" % (filename, title))
+                    if _FC:
+                        for docName, doc in FreeCAD.listDocuments().items():
+                            MKLog.debug("Document: '%s' - '%s'" % (docName, doc.FileName))
+                            if doc.FileName == filename:
+                                job = doc.getObject(title)
+                                if job:
+                                    sign = MKUtils.pathSignature(job.Path)
+                                    if str(sign) == signature:
+                                        MKLog.info("Job %s.%s loaded." % (job.Document.Label, job.Label))
+                                    else:
+                                        MKLog.warning("Job %s.%s is out of date!" % (job.Document.Label, job.Label))
 
         self.setJob(job)
 

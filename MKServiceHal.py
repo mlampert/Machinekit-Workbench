@@ -1,6 +1,6 @@
 # Classes to directly interact with the MK HAL layer.
 
-import PathScripts.PathLog as PathLog
+import MKLog
 import itertools
 import machinetalk.protobuf.object_pb2 as OBJECT
 import machinetalk.protobuf.types_pb2 as TYPES
@@ -12,7 +12,7 @@ from MKCommand import *
 from MKError   import *
 from MKService import *
 
-PathLog.setLevel(PathLog.Level.INFO, PathLog.thisModule())
+MKLog.setLevel(MKLog.Level.INFO, MKLog.thisModule())
 
 def pinValueBit(container):
     '''Helper function to get the bool value of a pin.'''
@@ -113,14 +113,14 @@ class MKServiceHalStatus(MKServiceSubscribe):
             for note in container.note:
                 if 'fc_manualtoolchange' in note and 'does not exist' in note:
                     # this will be the last time the service sends a message
-                    PathLog.info('no manual tool change')
+                    MKLog.info('no manual tool change')
                 else:
-                    PathLog.error(note)
+                    MKLog.error(note)
 
         elif container.type == TYPES.MT_HALRCOMP_FULL_UPDATE:
             for comp in container.comp:
                 if comp.name == 'fc_manualtoolchange':
-                    PathLog.info('manual tool change detected')
+                    MKLog.info('manual tool change detected')
                     self.toolChange = ComponentManualToolChange(comp)
         elif container.type == TYPES.MT_HALRCOMP_INCREMENTAL_UPDATE and self.toolChange:
             for pin in container.pin:
