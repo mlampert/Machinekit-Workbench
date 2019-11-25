@@ -33,8 +33,9 @@ import zmq
 from MKCommand          import *
 from MKServiceCommand   import *
 from MKServiceError     import *
-from MKServiceStatus    import *
 from MKServiceHal       import *
+from MKServicePreview   import *
+from MKServiceStatus    import *
 
 PathLog.setLevel(PathLog.Level.INFO, PathLog.thisModule())
 #PathLog.trackModule(PathLog.thisModule())
@@ -45,11 +46,13 @@ AxesName     = AxesForward
 
 
 _MKServiceRegister = {
-        'command'   : MKServiceCommand,
-        'error'     : MKServiceError,
-        'halrcmd'   : MKServiceHalCommand,
-        'halrcomp'  : MKServiceHalStatus,
-        'status'    : MKServiceStatus,
+        'command'       : MKServiceCommand,
+        'error'         : MKServiceError,
+        'halrcmd'       : MKServiceHalCommand,
+        'halrcomp'      : MKServiceHalStatus,
+        'status'        : MKServiceStatus,
+        'preview'       : MKServicePreview,
+        'previewstatus' : MKServicePreviewStatus,
         '': None
         }
 
