@@ -146,6 +146,9 @@ class MKServicePreview(MKService.MKServiceSubscribe):
     def topicNames(self):
         return ['preview']
 
+    def topicName(self):
+        return 'preview'
+
     def process(self, container):
         preview = []
         for pc in container.preview:
@@ -157,7 +160,9 @@ class MKServicePreview(MKService.MKServiceSubscribe):
                 self.complete = True
             preview.append(p)
         self.preview.extend(preview)
-        print('preview', self.complete, len(self.preview))
+        #print('preview', self.complete, len(self.preview))
+        if self.complete:
+            self.notifyObservers(len(self.preview))
 
 class MKServicePreviewStatus(MKService.MKServiceSubscribe):
 
@@ -169,9 +174,16 @@ class MKServicePreviewStatus(MKService.MKServiceSubscribe):
     def topicNames(self):
         return ['status']
 
+    def topicName(self):
+        return 'previewstatus'
+
     def process(self, container):
+        updated = []
         if container.HasField('interp_state'):
             self.interp_state = container.interp_state
+            updated.append('interp_state')
         if container.note:
             self.note = [n for n in container.note]
-        print('previewstatus', self.interp_state, self.note)
+            updated.append('note')
+        #print('previewstatus', self.interp_state, self.note)
+        self.notifyObservers(updated)

@@ -18,8 +18,8 @@
 import MKLog
 import MKUtils
 import MachinekitInstance
-import PySide.QtCore
-import PySide.QtGui
+import PySide2.QtCore as QtCore
+import PySide2.QtGui as QtGui
 import ftplib
 import io
 import machinetalk.protobuf.message_pb2 as MESSAGE
@@ -70,21 +70,22 @@ def FileResource(filename):
 
 def IconResource(filename):
     '''IconResource(filename) ... return a QtGui.QIcon from the given resource file (which must exist in the Resource directory).'''
-    return PySide.QtGui.QIcon(FileResource(filename))
+    return QtGui.QIcon(FileResource(filename))
 
-class Machinekit(PySide.QtCore.QObject):
+class Machinekit(QtCore.QObject):
     '''Class representing a MK instance and provide connection to Qt framework:
       * managing all services
       * providing access to all services 
       * deal with all the zeroconf and proto buf settings
       * trigger Qt signals on changes and upates from MK
       '''
-    statusUpdate      = PySide.QtCore.Signal(object, object)
-    errorUpdate       = PySide.QtCore.Signal(object, object)
-    commandUpdate     = PySide.QtCore.Signal(object, object)
-    halUpdate         = PySide.QtCore.Signal(object, object)
-    jobUpdate         = PySide.QtCore.Signal(object)
-    preferencesUpdate = PySide.QtCore.Signal()
+    statusUpdate      = QtCore.Signal(object, object)
+    errorUpdate       = QtCore.Signal(object, object)
+    commandUpdate     = QtCore.Signal(object, object)
+    halUpdate         = QtCore.Signal(object, object)
+    previewUpdate     = QtCore.Signal(object, object)
+    jobUpdate         = QtCore.Signal(object)
+    preferencesUpdate = QtCore.Signal()
 
     Context = zmq.Context()
     Poller  = zmq.Poller()
@@ -238,6 +239,10 @@ class Machinekit(PySide.QtCore.QObject):
                 display(m)
         elif 'command' in service.topicName():
             self.commandUpdate.emit(service, msg)
+        elif 'preview' in service.topicName():
+            self.previewUpdate.emit(service, msg)
+        else:
+            MKLog.error("topic %s not processed" % service.topicName())
 
     def providesServices(self, services):
         '''Return True if the given services are detected by the receiver.'''
