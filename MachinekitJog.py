@@ -79,6 +79,11 @@ class Jog(object):
         self.ui.jogScan.clicked.connect(lambda : self.scanJob(True))
         self.ui.jogScanBackwards.clicked.connect(lambda : self.scanJob(False))
 
+        self.jogScale = 1.0
+        self.ui.jogScaleInt.valueChanged.connect(self.executeJogScaleInt)
+        self.ui.jogScaleInt.sliderReleased.connect(self.executeJogScaleVal)
+        self.ui.jogScaleVal.editingFinished.connect(self.executeJogScaleVal)
+
         FreeCADGui.Selection.addObserver(self)
 
         self.isSetup = False
@@ -103,7 +108,6 @@ class Jog(object):
             item.setTextAlignment(PySide.QtCore.Qt.AlignRight)
             self.ui.jogDistance.addItem(item)
         self.ui.jogDistance.setCurrentRow(0)
-        self.isSetup = True
 
     def isConnected(self, topics=None):
         '''Return true if MK is connected and responsive.'''
@@ -127,20 +131,15 @@ class Jog(object):
 
         self.mk['command'].sendCommands(commands)
 
-    def joggingVelocity(self, axis):
-        '''Return the velocity to be used for jogging the given axis as defined by MK.'''
-        PathLog.track()
-        return self.mk['status.config.velocity.linear.default']
-
     def getJogIndexAndVelocity(self, axis):
         '''Return a tuple of the given axis' index and velocity according to MK.'''
         PathLog.track()
         if axis in machinekit.AxesForward:
             index = machinekit.AxesForward.index(axis)
-            veloc = self.joggingVelocity(axis)
+            veloc = self._jogVelocity()
         if axis in machinekit.AxesBackward:
             index = machinekit.AxesBackward.index(axis)
-            veloc = 0.0 - self.joggingVelocity(axis)
+            veloc = 0.0 - self._jogVelocity()
         return (index, veloc)
 
     def displayPos(self, axis):
@@ -264,6 +263,40 @@ class Jog(object):
             sequence.append(jog)
             self.mk['command'].sendCommandSequence(sequence)
 
+    def _jogVelocity(self, scale=None): 
+        if scale is None:
+            scale = self.jogScale
+        return self.mk['status.config.velocity.linear.default'] * scale
+
+    def executeJogScaleInt(self):
+        scale = self.ui.jogScaleInt.value() / 100.
+        self.ui.jogScaleVal.blockSignals(True)
+        self.ui.jogScaleVal.setValue(scale)
+        self.ui.jogScaleVal.blockSignals(False)
+
+    def executeJogScaleVal(self):
+        self.jogScale = self.ui.jogScaleVal.value()
+        self.ui.jogScaleInt.blockSignals(True)
+        self.ui.jogScaleInt.setSliderPosition(100. * self.jogScale)
+        self.ui.jogScaleInt.blockSignals(False)
+
+    def updateJogVelocity(self):
+        '''Update the override slider and spin box.'''
+        if self.mk and self.mk['status.config.velocity.linear']:
+            mi = self.mk['status.config.velocity.linear.min'] / self.mk['status.config.velocity.linear.default']
+            ma = self.mk['status.config.velocity.linear.max'] / self.mk['status.config.velocity.linear.default']
+            self.jogScale = 1.0
+            self.ui.jogScaleInt.blockSignals(True)
+            self.ui.jogScaleInt.setMinimum(100 * mi)
+            self.ui.jogScaleInt.setMaximum(100 * ma)
+            self.ui.jogScaleInt.setSliderPosition(100 * self.jogScale)
+            self.ui.jogScaleInt.blockSignals(False)
+            self.ui.jogScaleVal.blockSignals(True)
+            self.ui.jogScaleVal.setMinimum(mi)
+            self.ui.jogScaleVal.setMaximum(ma)
+            self.ui.jogScaleVal.setValue(self.jogScale)
+            self.ui.jogScaleVal.blockSignals(False)
+
     def updateDRO(self, connected, powered):
         '''Callback invoked whenever the position or the work offset changed.'''
         PathLog.track()
@@ -290,9 +323,13 @@ class Jog(object):
         isIdle = self.mk['status.interp.state'] == STATUS.EMC_TASK_INTERP_IDLE
 
         if connected:
-            self.ui.setWindowTitle(self.mk['status.config.name'])
             if not self.isSetup:
+                self.ui.setWindowTitle(self.mk['status.config.name'])
                 self.setupUI()
+                self.updateJogVelocity()
+                self.isSetup = True
+        else:
+            self.isSetup = False
 
         self.ui.jogScan.setEnabled(not self.mk.getJob() is None)
         self.ui.jogScanBackwards.setEnabled(not self.mk.getJob() is None)
@@ -301,12 +338,15 @@ class Jog(object):
         self.ui.dockWidgetContents.setEnabled(powered and isIdle)
 
 
-    def changed(self, service, msg):
+    def changed(self, service, updated):
         '''Callback invoked whenever MK sent an update.'''
-        PathLog.track(service, msg)
+        PathLog.track(service, updated)
+        print(service, updated)
         if self.mk:
             if 'status' in service.topicName():
                 self.updateUI()
+            if updated and 'status.config.velocity.linear' in updated:
+                self.updateJogVelocity()
 
     def scanJob(self, forward):
         '''scanJob(forward) ... move the tool around the outer perimeter of the job.'''
