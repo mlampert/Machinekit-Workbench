@@ -20,8 +20,8 @@ from MKCommand import *
 from MKServiceCommand import *
 
 
-PathLog.setLevel(PathLog.Level.DEBUG, PathLog.thisModule())
-PathLog.trackModule(PathLog.thisModule())
+#PathLog.setLevel(PathLog.Level.DEBUG, PathLog.thisModule())
+#PathLog.trackModule(PathLog.thisModule())
 
 class TreeSelectionObserver(object):
     '''An observer used to determine if currently a Job is selected.'''

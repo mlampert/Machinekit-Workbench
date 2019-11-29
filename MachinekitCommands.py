@@ -30,8 +30,8 @@ import PySide.QtCore
 import PySide.QtGui
 import machinekit
 
-PathLog.setLevel(PathLog.Level.DEBUG, PathLog.thisModule())
-PathLog.trackModule(PathLog.thisModule())
+#PathLog.setLevel(PathLog.Level.DEBUG, PathLog.thisModule())
+#PathLog.trackModule(PathLog.thisModule())
 
 MachinekitUpdateMS  = 50  # update machinekit every 50ms
 MachinekitUiHoldoff = 20  # menus and toolbars once a second (20 * 50ms)
@@ -185,10 +185,8 @@ class MachinekitCommandCombo(MachinekitCommand):
         return not self.mk is None
 
     def activate(self, mk):
-        PathLog.track(mk)
         if self.mk:
             mk = self.mk
-        PathLog.track(mk)
         dock = self.combo.get(mk)
         if dock:
             dock.activate()

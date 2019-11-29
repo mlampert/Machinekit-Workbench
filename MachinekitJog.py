@@ -341,7 +341,6 @@ class Jog(object):
     def changed(self, service, updated):
         '''Callback invoked whenever MK sent an update.'''
         PathLog.track(service, updated)
-        print(service, updated)
         if self.mk:
             if 'status' in service.topicName():
                 self.updateUI()

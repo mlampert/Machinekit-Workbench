@@ -20,8 +20,8 @@ from MKCommand import *
 from MKServiceCommand import *
 
 
-PathLog.setLevel(PathLog.Level.DEBUG, PathLog.thisModule())
-PathLog.trackModule(PathLog.thisModule())
+#PathLog.setLevel(PathLog.Level.DEBUG, PathLog.thisModule())
+#PathLog.trackModule(PathLog.thisModule())
 
 class Status(object):
     '''A class used by the Combo view to interact with the MK instance itself.

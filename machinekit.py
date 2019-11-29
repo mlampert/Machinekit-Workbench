@@ -395,7 +395,7 @@ def _update():
                     mk._receiveMessage(socket)
                     processed = True
             if not processed:
-                MKLog.debug("Unconnected socket? %08x" % id(socket))
+                PathLog.debug("Unconnected socket? %08x" % id(socket))
 
 def Instances(services=None):
     '''Instances(services=None) ... Answer a list of all discovered Machinekit instances which provide all services listed.
