@@ -205,7 +205,7 @@ class Machinekit(PySide.QtCore.QObject):
         elif 'hal' in service.topicName():
             self.halUpdate.emit(service, msg)
         elif 'error' in service.topicName():
-            self.errorUpdate.emit(service, msg)
+            self.errorUpdate.emit(self, msg)
             display = PathLog.info
             if msg.isError():
                 display = PathLog.error

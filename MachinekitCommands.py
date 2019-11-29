@@ -30,19 +30,21 @@ import PySide.QtCore
 import PySide.QtGui
 import machinekit
 
-#PathLog.setLevel(PathLog.Level.INFO, PathLog.thisModule())
-#PathLog.trackModule(PathLog.thisModule())
+PathLog.setLevel(PathLog.Level.DEBUG, PathLog.thisModule())
+PathLog.trackModule(PathLog.thisModule())
 
 MachinekitUpdateMS  = 50  # update machinekit every 50ms
 MachinekitUiHoldoff = 20  # menus and toolbars once a second (20 * 50ms)
 
-def _mkerror(service, msg):
+MK = None
+
+def _mkerror(mk, msg):
     '''Helper function to display an error in a message box.'''
     mb = PySide.QtGui.QMessageBox()
     mb.setWindowIcon(machinekit.IconResource('machinekiticon.svg'))
     mb.setWindowTitle('Machinekit')
     mb.setTextFormat(PySide.QtCore.Qt.TextFormat.RichText)
-    mb.setText("<div align='center'>%s</div>" % '<br/>'.join(msg.messages()))
+    mb.setText("<div align='center'>%s</div>" % '<br/>'.join([mk.name(), ''] + list(msg.messages())))
     if msg.isError():
         mb.setIcon(PySide.QtGui.QMessageBox.Critical)
     elif msg.isText():
@@ -51,8 +53,6 @@ def _mkerror(service, msg):
         mb.setIcon(PySide.QtGui.QMessageBox.NoIcon)
     mb.setStandardButtons(PySide.QtGui.QMessageBox.Ok)
     mb.exec_()
-
-MK = None
 
 def SetMK(mk):
     global MK
@@ -90,7 +90,7 @@ class MachinekitCommand(object):
         PathLog.track(self.name)
         dock = None
 
-        if ActiveMK(True):
+        if self.haveMK() or ActiveMK(True):
             dock = self.activate(ActiveMK())
         else:
             PathLog.debug('No machinekit instance active')
@@ -100,6 +100,10 @@ class MachinekitCommand(object):
             for closebutton in [widget for widget in dock.ui.children() if widget.objectName().endswith('closebutton')]:
                 closebutton.clicked.connect(lambda : self.terminateDock(dock))
             FreeCADGui.getMainWindow().addDockWidget(PySide.QtCore.Qt.LeftDockWidgetArea, dock.ui)
+
+    def haveMK(self):
+        '''Return True if it is not required to have an active machinekit instance for this command'''
+        return False
 
     def serviceNames(self):
         '''Return a list of services required for the command to function.'''
@@ -177,15 +181,21 @@ class MachinekitCommandCombo(MachinekitCommand):
     def IsActive(self):
         return (not self.mk is None) or MachinekitCommand.IsActive(self)
 
+    def haveMK(self):
+        return not self.mk is None
+
     def activate(self, mk):
+        PathLog.track(mk)
         if self.mk:
             mk = self.mk
+        PathLog.track(mk)
         dock = self.combo.get(mk)
         if dock:
             dock.activate()
             return None
         dock = MachinekitCombo.Combo(mk)
         self.combo[mk] = dock
+        self.mk.errorUpdate.connect(_mkerror)
         return dock
 
     def GetResources(self):
@@ -196,6 +206,7 @@ class MachinekitCommandCombo(MachinekitCommand):
                 }
 
     def terminateDock(self, dock):
+        self.mk.errorUpdate.disconnect(_mkerror)
         del self.combo[dock.mk]
         return MachinekitCommand.terminateDock(self, dock)
 

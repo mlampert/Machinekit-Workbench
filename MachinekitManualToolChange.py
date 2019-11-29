@@ -29,9 +29,9 @@ class Controller(object):
             else:
                 tc = self.getTC(msg.toolNumber())
                 if tc:
-                    msg = ["Insert tool #%d" % tc.ToolNumber, "<i>\"%s\"</i>" % tc.Label]
+                    msg = [self.mk.name(), '', "Insert tool #%d" % tc.ToolNumber, "<i><b>\"%s\"</b></i>" % tc.Label]
                 else:
-                    msg = ["Insert tool #%d" % msg.toolNumber()]
+                    msg = [self.mk.name(), '', "Insert tool <b>#%d</b>" % msg.toolNumber()]
                 mb = PySide.QtGui.QMessageBox()
                 mb.setWindowIcon(machinekit.IconResource('machinekiticon.png'))
                 mb.setWindowTitle('Machinekit')
