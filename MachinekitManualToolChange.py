@@ -33,7 +33,7 @@ class Controller(object):
                 else:
                     msg = [self.mk.name(), '', "Insert tool <b>#%d</b>" % msg.toolNumber()]
                 mb = PySide.QtGui.QMessageBox()
-                mb.setWindowIcon(machinekit.IconResource('machinekiticon.png'))
+                mb.setWindowIcon(machinekit.IconResource('machinekiticon.svg'))
                 mb.setWindowTitle('Machinekit')
                 mb.setTextFormat(PySide.QtCore.Qt.TextFormat.RichText)
                 mb.setText("<div align='center'>%s</div>" % '<br/>'.join(msg))

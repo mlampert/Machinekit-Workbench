@@ -409,7 +409,7 @@ class Jog(object):
                         msg.append("Z limit max exceeded by: %.2f" % (bb.ZMax - mbb.ZMax))
 
                     mb = PySide.QtGui.QMessageBox()
-                    mb.setWindowIcon(machinekit.IconResource('machinekiticon.png'))
+                    mb.setWindowIcon(machinekit.IconResource('machinekiticon.svg'))
                     mb.setWindowTitle('Machinekit')
                     mb.setTextFormat(PySide.QtCore.Qt.TextFormat.RichText)
                     mb.setText("<div align='center'>%s</div>" % '<br/>'.join(msg))

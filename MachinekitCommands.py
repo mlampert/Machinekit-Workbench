@@ -130,7 +130,7 @@ class MachinekitCommandJog(MachinekitCommand):
     def GetResources(self):
         PathLog.track()
         return {
-                'Pixmap'    : machinekit.FileResource('machinekiticon-jog.png'),
+                'Pixmap'    : machinekit.FileResource('machinekiticon-jog.svg'),
                 'MenuText'  : 'Jog',
                 'ToolTip'   : 'Jog and DRO interface for machine setup'
                 }
@@ -146,7 +146,7 @@ class MachinekitCommandExecute(MachinekitCommand):
 
     def GetResources(self):
         return {
-                'Pixmap'    : machinekit.FileResource('machinekiticon-execute.png'),
+                'Pixmap'    : machinekit.FileResource('machinekiticon-execute.svg'),
                 'MenuText'  : 'Execute',
                 'ToolTip'   : 'Interface for controlling file execution'
                 }
@@ -165,7 +165,7 @@ class MachinekitCommandHud(MachinekitCommand):
 
     def GetResources(self):
         return {
-                'Pixmap'    : machinekit.FileResource('machinekiticon-hud.png'),
+                'Pixmap'    : machinekit.FileResource('machinekiticon-hud.svg'),
                 'MenuText'  : 'Hud',
                 'ToolTip'   : 'HUD DRO interface for machine setup'
                 }
@@ -200,7 +200,7 @@ class MachinekitCommandCombo(MachinekitCommand):
 
     def GetResources(self):
         return {
-                'Pixmap'    : machinekit.FileResource('machinekiticon.png'),
+                'Pixmap'    : machinekit.FileResource('machinekiticon.svg'),
                 'MenuText'  : 'Combo',
                 'ToolTip'   : 'Combo interface with all sub-interfaces'
                 }
