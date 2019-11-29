@@ -33,8 +33,8 @@ import zmq
 from MKCommand          import *
 from MKServiceCommand   import *
 from MKServiceError     import *
-from MKServiceStatus    import *
 from MKServiceHal       import *
+from MKServiceStatus    import *
 
 PathLog.setLevel(PathLog.Level.INFO, PathLog.thisModule())
 #PathLog.trackModule(PathLog.thisModule())
@@ -45,11 +45,11 @@ AxesName     = AxesForward
 
 
 _MKServiceRegister = {
-        'command'   : MKServiceCommand,
-        'error'     : MKServiceError,
-        'halrcmd'   : MKServiceHalCommand,
-        'halrcomp'  : MKServiceHalStatus,
-        'status'    : MKServiceStatus,
+        'command'       : MKServiceCommand,
+        'error'         : MKServiceError,
+        'halrcmd'       : MKServiceHalCommand,
+        'halrcomp'      : MKServiceHalStatus,
+        'status'        : MKServiceStatus,
         '': None
         }
 
@@ -92,6 +92,7 @@ class Machinekit(PySide.QtCore.QObject):
         self.lock = threading.Lock()
 
         self.service = {}
+        self.socket = {}
         self.job = None
         self.needUpdateJob = True
         self.gcode = []
@@ -133,6 +134,7 @@ class Machinekit(PySide.QtCore.QObject):
         def removeService(s, service):
             if s and service:
                 self.Poller.unregister(service.socket)
+                del self.socket[service.socket]
                 self.service[s] = None
                 service.detach(self)
             return None
@@ -158,8 +160,9 @@ class Machinekit(PySide.QtCore.QObject):
                     if cls is None:
                         PathLog.error("service %s not supported" % s)
                     else:
-                        PathLog.info("Connecting to service: %s.%s" % (self.name(), s))
                         service = cls(self.Context, s, ep.properties)
+                        PathLog.info("Connecting to %s.%-10s\t%08x" % (self.name(), s, id(service.socket)))
+                        self.socket[service.socket] = service
                         self.service[s] = service
                         service.attach(self)
                         self.Poller.register(service.socket, zmq.POLLIN)
@@ -168,49 +171,30 @@ class Machinekit(PySide.QtCore.QObject):
                     poll = True
         return poll
 
-    def _update(self):
+    def _receiveMessage(self, socket):
         with self.lock:
-            poll = True
-            updateServices = True
-            # if there is at least one service connected check if there are any messages to process
-            while poll:
-                # As it turns out the poller most often returns a single pair so we want to call it
-                # in a loop to get all pending updates.
-                poll = dict(self.Poller.poll(0))
-                for socket in poll:
-                    msg = None
-                    rx = MESSAGE.Container()
-                    try:
-                        msg = socket.recv_multipart()[-1]
-                        rx.ParseFromString(msg)
-                    except Exception as e:
-                        PathLog.error("%s exception: %s" % (service.name, e))
-                        PathLog.error("    msg = '%s'" % msg)
-                    else:
-                        # ignore all ping messages for now
-                        if rx.type != TYPES.MT_PING:
-                            #PathLog.debug(rx)
-                            processed = False
-                            if updateServices:
-                                self._updateServicesLocked()
-                                updateServices = False
-                            for service in self.service.values():
-                                if service and service.socket == socket:
-                                    service.process(rx);
-                                    processed = True
-                                    break
-                            if not processed:
-                                PathLog.debug("unconnected socket? %s" % socket)
+            msg = None
+            rx = MESSAGE.Container()
+            try:
+                msg = socket.recv_multipart()[-1]
+                rx.ParseFromString(msg)
+            except Exception as e:
+                PathLog.error("%s exception: %s" % (service.name, e))
+                PathLog.error("    msg = '%s'" % msg)
+            else:
+                # ignore all ping messages for now
+                if rx.type != TYPES.MT_PING:
+                    self.socket[socket].process(rx)
 
-            if (time.monotonic() - self.lastPing) > 0.5:
-                if updateServices:
-                    self._updateServicesLocked()
-                if self.needUpdateJob:
-                    self.updateJob()
-                for service in self.service.values():
-                    if service:
-                        service.ping()
-                self.lastPing = time.monotonic()
+    def _update(self, now):
+        if (now - self.lastPing) > 0.5:
+            self._updateServicesLocked()
+            if self.needUpdateJob:
+                self.updateJob()
+            for service in self.service.values():
+                if service:
+                    service.ping()
+            self.lastPing = now
 
     def changed(self, service, msg):
         '''Callback invoked by the framework when one of the services received an update.'''
@@ -388,11 +372,30 @@ _Machinekit = {}
 
 def _update():
     '''Internal callback periodically invoked for houskeeping tasks.'''
+    # first make sure we know about all MK instances
     for inst in _MachinekitInstanceMonitor.instances(None):
         if _Machinekit.get(inst.uuid) is None:
             _Machinekit[inst.uuid] = Machinekit(inst)
+
+    # then let each MK instance update itself
+    now = time.monotonic()
     for mk in _Machinekit.values():
-        mk._update()
+        mk._update(now)
+
+    # now check for any messages that need to be processed
+    poll = True
+    while poll:
+        # As it turns out the poller most often returns a single pair so we want to call it
+        # in a loop to get all pending updates.
+        poll = dict(Machinekit.Poller.poll(0))
+        for socket in poll:
+            processed = False
+            for mk in _Machinekit.values():
+                if socket in mk.socket:
+                    mk._receiveMessage(socket)
+                    processed = True
+            if not processed:
+                MKLog.debug("Unconnected socket? %08x" % id(socket))
 
 def Instances(services=None):
     '''Instances(services=None) ... Answer a list of all discovered Machinekit instances which provide all services listed.
