@@ -1,0 +1,7 @@
+[Unit]
+Description="Machinekit starting service"
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/rest-services

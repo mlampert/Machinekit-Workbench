@@ -121,45 +121,50 @@ class ZeroconfBrowser:
             print "Resolve error:", args, kwargs
 
 dsns = {}
+dsnsLock = threading.Lock()
+
 def resolved(add, tdict):
     if add:
-        service = tdict['service']
-        if service in dsns: #once only
-            return
-        dsn =  tdict['dsn']
-        dsns[service] = tdict
-        #print "resolved", service, dsn #, dsns
+        with dsnsLock:
+            service = tdict['service']
+            if service in dsns: #once only
+                return
+            dsn =  tdict['dsn']
+            dsns[service] = tdict
+            #print "resolved", service, dsn #, dsns
     else:
-        for name in dsns:
-            service = dsns[name]
-            if service['name'] == tdict:
-                del dsns[name]
-                break
+        with dsnsLock:
+            for name in dsns:
+                service = dsns[name]
+                if service['name'] == tdict:
+                    del dsns[name]
+                    break
 
 class GetRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_GET(self):
         req = self.path[1:]
-        if 'machinekit' == req:
-            tdict = dsns
-        else:
-            tdict = dsns.get(req)
-            if tdict is None:
-                tdict = {}
-                for name in dsns:
-                    if dsns[name]['instance'] == req or dsns[name]['uuid'] == req:
-                        tdict[name] = dsns[name]
+        with dsnsLock:
+            if 'machinekit' == req:
+                tdict = dsns
+            else:
+                tdict = dsns.get(req)
+                if tdict is None:
+                    tdict = {}
+                    for name in dsns:
+                        if dsns[name]['instance'] == req or dsns[name]['uuid'] == req:
+                            tdict[name] = dsns[name]
 
-        if tdict:
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            json.dump(tdict, self.wfile, indent=2)
-        else:
-            self.send_response(404)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            self.wfile.write('{ }')
+            if tdict:
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                json.dump(tdict, self.wfile, indent=2)
+            else:
+                self.send_response(404)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write('{ }')
         self.wfile.write('\n')
 
 def main():
@@ -181,7 +186,7 @@ def main():
         browser = ZeroconfBrowser(uuid=uuid, resolvecb=resolved)
         Handler = GetRequestHandler
 
-        httpd = BaseHTTPServer.HTTPServer(('', 8080), Handler)
+        httpd = BaseHTTPServer.HTTPServer(('', 8088), Handler)
         httpd.timeout = 1000
         httpd.serve_forever()
     except KeyboardInterrupt:

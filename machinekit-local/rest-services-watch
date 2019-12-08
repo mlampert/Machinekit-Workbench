@@ -1,0 +1,26 @@
+#!/usr/bin/python3
+
+import json
+import sys
+import time
+import urllib.request
+
+services = None
+while True:
+  try:
+    s = urllib.request.urlopen('http://machinekit:8088/machinekit').read()
+    j = json.loads(s)
+    ss = sorted([k for k in j])
+    if ss != services:
+      print(ss)
+      services = ss
+  except KeyboardInterrupt:
+    sys.exit(0)
+  except Exception as e:
+    s = str(e)
+    if s != services:
+      print('ERROR:', s)
+      services = s
+    pass
+  time.sleep(0.1)
+
