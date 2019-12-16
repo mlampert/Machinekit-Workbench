@@ -1,9 +1,11 @@
 # Classes and functions to deal with the Machinkit workbench's preferences
 
 import FreeCAD
+import json
 
 PreferenceStartOnLoad = 'GeneralStartOnLoad'
 PreferenceAddToPathWB = 'GeneralAddToPathWB'
+PreferenceRestServers = 'GeneralRestServer'
 
 PreferenceHudWorkCoordinates = "HudWorkCoordinates"
 PreferenceHudMachineCoordinates = "HudMachineCoordinates"
@@ -39,11 +41,16 @@ def addToPathWB():
     '''Return True if MK Combo commands should be added to the Path workbench toolbar (the default).'''
     return preferences().GetBool(PreferenceAddToPathWB, True)
 
-def setGeneralPreferences(start, pathWB):
+def restServers():
+    '''Return a list of host:port to check for service announcements.'''
+    return json.loads(preferences().GetString(PreferenceRestServers, '{}'))
+
+def setGeneralPreferences(start, pathWB, restSrvs):
     '''API to set the general preferences.'''
     pref = preferences()
     pref.SetBool(PreferenceStartOnLoad, start)
     pref.SetBool(PreferenceAddToPathWB, pathWB)
+    pref.SetString(PreferenceRestServers, json.dumps(restSrvs))
 
 def hudFontName():
     '''Return the configured font name to be used for the HUD (default is mono).'''
@@ -165,23 +172,49 @@ def setHudPreferencesProgr(hide, bar, percent, elapsed, remaining, total, fontNa
 class PageGeneral(object):
     '''A class managing the general Preferences editor for the Machinekit workbench.'''
 
+    AdditionalItemLabel = '<click-to-edit>'
+
     def __init__(self, parent=None):
         import FreeCADGui
         import machinekit
         self.form = FreeCADGui.PySideUic.loadUi(machinekit.FileResource('preferences.ui'))
+        self.form.restServers.itemChanged.connect(self.itemChanged)
 
     def saveSettings(self):
         '''Store preferences from the UI back to the model so they can be saved.'''
         import machinekit
-        setGeneralPreferences(self.form.startOnLoad.isChecked(), self.form.addToPathWB.isChecked())
+        servers = []
+        for row in range(self.form.restServers.count()):
+            s = self.form.restServers.item(row).text()
+            if s and s != self.AdditionalItemLabel:
+                servers.append(s)
+        setGeneralPreferences(self.form.startOnLoad.isChecked(), self.form.addToPathWB.isChecked(), servers)
         for mk in machinekit.Instances():
             mk.preferencesUpdate.emit()
 
+    def _addItem(self, label):
+        import PySide.QtGui, PySide.QtCore
+        item = PySide.QtGui.QListWidgetItem(label)
+        item.setFlags(PySide.QtCore.Qt.ItemFlag.ItemIsEnabled | PySide.QtCore.Qt.ItemFlag.ItemIsSelectable | PySide.QtCore.Qt.ItemFlag.ItemIsEditable)
+        self.form.restServers.addItem(item)
+
     def loadSettings(self):
         '''Load preferences and update the eitor accordingly.'''
-        import PySide.QtGui
         self.form.startOnLoad.setChecked(startOnLoad())
         self.form.addToPathWB.setChecked(addToPathWB())
+        self.form.restServers.blockSignals(True)
+        for server in sorted(restServers()):
+            self._addItem(server)
+        self._addItem(self.AdditionalItemLabel)
+        self.form.restServers.blockSignals(False)
+
+    def itemChanged(self, item):
+        self.form.restServers.blockSignals(True)
+        if item.text() and self.form.restServers.currentRow() == (self.form.restServers.count() - 1):
+            self._addItem(self.AdditionalItemLabel)
+        elif not item.text():
+            item.setText(self.AdditionalItemLabel)
+        self.form.restServers.blockSignals(False)
 
 class PageHUD(object):
     '''A class managing the HUD Preferences editor for the Machinekit workbench.'''

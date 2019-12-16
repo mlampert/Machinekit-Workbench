@@ -3,8 +3,13 @@
 # The classes in this file deal with service discovery and keep track of all discovered Machinekit
 # instances and their associated endpoints.
 
+import MachinekitPreferences
+import copy
 import itertools
+import json
 import threading
+import time
+import urllib.request
 import zeroconf
 
 class ServiceEndpoint(object):
@@ -28,6 +33,8 @@ class ServiceEndpoint(object):
 
     def address(self):
         '''Return the endpoint address as an IPv4 string.'''
+        if str == type(self.addr):
+            return self.addr
         return "%d.%d.%d.%d" % (self.addr[0], self.addr[1], self.addr[2], self.addr[3])
 
     def port(self):
@@ -70,15 +77,61 @@ class MachinekitInstance(object):
         with self.lock:
             return [service for service in self.endpoint]
 
+def serviceThread(monitor):
+    issue = {}
+    while True:
+        with monitor.lock:
+            explicit = copy.copy(monitor.explicit)
+        for host in explicit:
+            if not ':' in host:
+                host += ':8088'
+            try:
+                s = urllib.request.urlopen("http://%s/machinekit" % host).read()
+                j = json.loads(s)
+                #print('serivces:', [j[k] for k in j])
+                with monitor.lock:
+                    mk = None
+                    for name in j:
+                        props = j[name]
+                        properties = {}
+                        for l in props:
+                            properties[l.encode()] = props[l].encode()
+                        uuid = properties[b'uuid']
+                        mk = monitor.instance.get(uuid)
+                        if mk is None:
+                            mk = MachinekitInstance(uuid, properties)
+                            monitor.instance[uuid] = mk
+                        if mk.endpointFor(name) is None:
+                            dsn = props['dsn'].split(':')
+                            mk._addService(properties, name, dsn[1].strip('/'), int(dsn[2]))
+                    if not mk is None:
+                        for service in mk.services():
+                            if j.get(service) is None:
+                                mk._removeService(service)
+                issue[host] = None
+            except Exception as e:
+                # this happens when MK isn't running or the host isn't even routable
+                err = str(e)
+                if issue.get(host) != err:
+                    print("%s - %s" % (host, err))
+                    issue[host] = err
+
+        time.sleep(1)
+
+
+
 class ServiceMonitor(object):
     '''Singleton for the zeroconf service discovery. DO NOT USE.'''
     _Instance = None
 
-    def __init__(self):
+    def __init__(self, explicit=None):
         self.zc = zeroconf.Zeroconf()
         self.browser = zeroconf.ServiceBrowser(self.zc, "_machinekit._tcp.local.", self)
         self.instance = {}
+        self.explicit = explicit if explicit else MachinekitPreferences.restServers()
         self.lock = threading.Lock()
+        self.thread = threading.Thread(target=serviceThread, args=(self,), daemon=True)
+        self.thread.start()
 
     # zeroconf.ServiceBrowser interface
     def remove_service(self, zc, typ, name):

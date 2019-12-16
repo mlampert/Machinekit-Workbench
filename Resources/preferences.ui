@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>317</width>
-    <height>325</height>
+    <width>310</width>
+    <height>339</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -29,6 +29,34 @@
          <string>Add Combo tool to Path Workbench</string>
         </property>
         <property name="checked">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="groupBox">
+     <property name="title">
+      <string>Machinekit rest server</string>
+     </property>
+     <layout class="QVBoxLayout" name="verticalLayout_2">
+      <item>
+       <widget class="QListWidget" name="restServers">
+        <property name="toolTip">
+         <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;If you run rest-services on a Machinekit instance you can add the host:port here and the workbench will actively check the server and any services running on it.&lt;/p&gt;&lt;p&gt;The default port (if none is specified) is 8088&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+        </property>
+        <property name="editTriggers">
+         <set>QAbstractItemView::AllEditTriggers</set>
+        </property>
+        <property name="tabKeyNavigation">
+         <bool>true</bool>
+        </property>
+        <property name="selectionBehavior">
+         <enum>QAbstractItemView::SelectRows</enum>
+        </property>
+        <property name="uniformItemSizes">
          <bool>true</bool>
         </property>
        </widget>
