@@ -239,7 +239,7 @@ class Jog(object):
         '''FC callback if the selection in the 3d view changes - used to determine the destination
         when the user wants to jog the tool to a specific position.'''
         PathLog.track()
-        if self.ui.jogGoto.isChecked() and self.mk['status.motion.state'] == TYPES.RCS_DONE:
+        if self.ui.jogGoto.isChecked() and self.mk['status.motion.state'] == TYPES.RCS_DONE and not self.ui.jogGoto.visibleRegion().isEmpty():
             x = pnt[0]
             y = pnt[1]
             z = pnt[2]
